@@ -405,6 +405,7 @@
         isPanning: false,
         panStart: null, // { x, y } - starting position for pan
         spacePressed: false, // Track if space is held for panning
+        canvasFocused: true, // Whether canvas is focused - controls visibility of control points
       };
 
       // Helper to get active curve's segments
@@ -554,6 +555,23 @@
         return false;
       }
 
+      // Debounce helper - only execute function after delay with no new calls
+      function debounce(fn, delay) {
+        let timeoutId = null;
+        return function (...args) {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+          timeoutId = setTimeout(() => {
+            fn.apply(this, args);
+            timeoutId = null;
+          }, delay);
+        };
+      }
+
+      // Debounced version of updateURLHash - waits 300ms after last call
+      const debouncedUpdateURLHash = debounce(updateURLHash, 300);
+
       // ========================================================================
       // NODE DELETION
       // ========================================================================
@@ -672,11 +690,15 @@
           drawSegment(state.currentSegment, state.currentCurveIndex, -1, 0, true);
         }
 
+        // Show/hide control points and handles based on canvas focus
+        handlesGroup.style.display = state.canvasFocused ? '' : 'none';
+        pointsGroup.style.display = state.canvasFocused ? '' : 'none';
+
         updateSegmentList();
         
         // Update URL hash to keep it in sync (but not during drawing)
         if (!state.isDrawing) {
-          updateURLHash();
+          debouncedUpdateURLHash();
         }
       }
 
@@ -1183,12 +1205,17 @@
       exportBtn.addEventListener("click", handleExport);
       copyUrlBtn.addEventListener("click", handleCopyUrl);
 
-      // Keyboard events for space+drag panning
+      // Keyboard events for space+drag panning and escape for focus mode
       document.addEventListener('keydown', (e) => {
         if (e.code === 'Space' && !state.spacePressed) {
           state.spacePressed = true;
           svg.style.cursor = 'grab';
           e.preventDefault();
+        }
+        // Escape key enters focus mode (hides control points)
+        if (e.code === 'Escape' && state.canvasFocused) {
+          state.canvasFocused = false;
+          render();
         }
       });
 
@@ -1208,6 +1235,22 @@
 
       // Load from URL hash if present
       loadFromURLHash();
+
+      // Canvas focus/unfocus - hide control points when clicking outside canvas
+      document.addEventListener('mousedown', (e) => {
+        const clickedOnCanvas = svg.contains(e.target);
+        if (clickedOnCanvas && !state.canvasFocused) {
+          state.canvasFocused = true;
+          render();
+        } else if (!clickedOnCanvas && state.canvasFocused) {
+          // Check if click is on a toolbar button - don't unfocus for those
+          const isToolbarClick = e.target.closest('.toolbar') || e.target.closest('.sidebar');
+          if (!isToolbarClick) {
+            state.canvasFocused = false;
+            render();
+          }
+        }
+      });
 
       // Initial render
       render();

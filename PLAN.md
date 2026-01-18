@@ -580,15 +580,22 @@ Segment[n+1].P2 = 4 * Segment[n].P3 - 4 * Segment[n].P2 + Segment[n].P1
 
 Both implementations share:
 
-| Control                  | Function                                 |
-| ------------------------ | ---------------------------------------- |
-| **Click** canvas         | Add new anchor point                     |
-| **Drag** from anchor     | Adjust outgoing control handle           |
-| **Click** existing point | Select for editing                       |
-| **Drag** selected point  | Move point (with continuity enforcement) |
-| **Continuity dropdown**  | Set mode for selected junction           |
-| **Clear button**         | Reset canvas                             |
-| **Export button**        | Output point data as JSON                |
+| Control                         | Function                                 |
+| ------------------------------- | ---------------------------------------- |
+| **Shift+click** canvas          | Start new curve at click position        |
+| **Ctrl+click** canvas           | Extend from selected endpoint            |
+| **Drag** any point              | Move point freely                        |
+| **Ctrl+drag** control point     | Maintain continuity (mirror to neighbor) |
+| **Ctrl+click** anchor           | Delete anchor point                      |
+| **Space+drag**                  | Pan entire canvas                        |
+| **Click** endpoint (first/last) | Select endpoint for extension            |
+| **Click** outside canvas        | Enter focus mode (hide controls)         |
+| **Escape** key                  | Enter focus mode (hide controls)         |
+| **Click** on canvas             | Exit focus mode (show controls)          |
+| **Continuity dropdown**         | Set mode for junctions                   |
+| **Export JSON button**          | Download curve data as JSON file         |
+| **Copy URL button**             | Copy shareable URL to clipboard          |
+| **Clear All button**            | Reset canvas                             |
 
 ---
 
@@ -793,6 +800,53 @@ Or use query parameter:
 ```
 https://example.com/svg.html?d=100~200_150~250_180~280_200~300
 ```
+
+---
+
+## 10. Focus Mode (Clean View)
+
+When working with curves, control points and helper lines can be hidden to see only the raw curve output.
+
+### 10.1 Behavior
+
+| User Action                  | Result                                             |
+| ---------------------------- | -------------------------------------------------- |
+| Click **outside** the canvas | Hide control points, handles, and junction squares |
+| Press **Escape** key         | Hide control points, handles, and junction squares |
+| Click **on** the canvas      | Show all editing UI elements                       |
+| Click on **toolbar/sidebar** | No change (maintains current focus state)          |
+
+### 10.2 What Gets Hidden
+
+- Control point circles (p1, p2)
+- Anchor point squares (p0, p3)
+- Handle/arm lines (dashed lines connecting anchors to control points)
+
+### 10.3 What Stays Visible
+
+- Curve paths (the actual Bézier curves)
+
+### 10.4 Use Cases
+
+- **Preview mode**: See the final curve without editing clutter
+- **Screenshots**: Capture clean curve visuals
+- **Presentations**: Show only the output curves
+
+---
+
+## 11. Performance Optimizations
+
+### 11.1 Debounced URL Updates
+
+URL hash updates are debounced to prevent excessive browser history manipulation and CPU usage during drag operations.
+
+```javascript
+// URL updates are debounced with 300ms delay
+const debouncedUpdateURLHash = debounce(updateURLHash, 300);
+```
+
+**Before**: URL updated on every `mousemove` during drag → high CPU usage  
+**After**: URL updates 300ms after last interaction → smooth dragging
 
 ---
 
