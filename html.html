@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bézier Curve Editor - DIV Renderer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      color: #e0e0e0;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 16px;
+      gap: 16px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      background: linear-gradient(90deg, #ff6b6b, #ffa502);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .toolbar button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #e0e0e0;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #ff4757, #c0392b);
+      color: #fff;
+    }
+
+    .btn-danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(255, 71, 87, 0.3);
+    }
+
+    .continuity-selector {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .continuity-selector label {
+      font-size: 0.875rem;
+      color: #a0a0a0;
+    }
+
+    .continuity-selector select {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.1);
+      color: #e0e0e0;
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+
+    .segment-selector {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .segment-selector label {
+      font-size: 0.875rem;
+      color: #a0a0a0;
+    }
+
+    .segment-selector input {
+      width: 60px;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.1);
+      color: #e0e0e0;
+      font-size: 0.875rem;
+      text-align: center;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      gap: 16px;
+    }
+
+    .canvas-container {
+      flex: 1;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      position: relative;
+    }
+
+    #canvas {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      cursor: crosshair;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    .sidebar h3 {
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #888;
+      margin-bottom: 12px;
+    }
+
+    .info-box {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 0.8rem;
+      line-height: 1.6;
+    }
+
+    .info-box code {
+      background: rgba(255, 107, 107, 0.2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Fira Code', monospace;
+    }
+
+    .segment-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .segment-item {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.8rem;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .segment-item:hover {
+      border-color: rgba(255, 107, 107, 0.3);
+    }
+
+    .segment-item.selected {
+      border-color: #ff6b6b;
+      background: rgba(255, 107, 107, 0.1);
+    }
+
+    .junction-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .junction-btn {
+      padding: 4px 8px;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.1);
+      color: #e0e0e0;
+      transition: all 0.2s;
+    }
+
+    .junction-btn.active {
+      background: #ff6b6b;
+      color: #fff;
+    }
+
+    .junction-btn:hover:not(.active) {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* DIV-based curve rendering */
+    .curve-segment {
+      position: absolute;
+      height: 3px;
+      background: linear-gradient(90deg, #ff6b6b, #ffa502);
+      transform-origin: left center;
+      pointer-events: none;
+      border-radius: 2px;
+      box-shadow: 0 0 8px rgba(255, 107, 107, 0.5);
+    }
+
+    .handle-line {
+      position: absolute;
+      height: 2px;
+      background: rgba(139, 92, 246, 0.5);
+      transform-origin: left center;
+      pointer-events: none;
+    }
+
+    .anchor-point {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      background: #ff6b6b;
+      border: 2px solid #fff;
+      border-radius: 2px;
+      transform: translate(-50%, -50%);
+      cursor: move;
+      z-index: 10;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+
+    .anchor-point:hover {
+      transform: translate(-50%, -50%) scale(1.2);
+      box-shadow: 0 0 12px rgba(255, 107, 107, 0.6);
+    }
+
+    .control-point {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #8b5cf6;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      cursor: move;
+      z-index: 10;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+
+    .control-point:hover {
+      transform: translate(-50%, -50%) scale(1.2);
+      box-shadow: 0 0 12px rgba(139, 92, 246, 0.6);
+    }
+
+    .instructions {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      color: #a0a0a0;
+      max-width: 300px;
+    }
+
+    .instructions strong {
+      color: #ff6b6b;
+    }
+
+    .stats {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 0.7rem;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🎨 Bézier Curve Editor (DIV)</h1>
+      <div class="toolbar">
+        <div class="segment-selector">
+          <label for="segmentCount">Segments/Curve:</label>
+          <input type="number" id="segmentCount" value="50" min="10" max="200">
+        </div>
+        <div class="continuity-selector">
+          <label for="continuity">Junction Mode:</label>
+          <select id="continuity">
+            <option value="independent">Independent</option>
+            <option value="c1" selected>C¹ (Tangent)</option>
+            <option value="c2">C² (Curvature)</option>
+          </select>
+        </div>
+        <button class="btn-secondary" id="exportBtn">Export JSON</button>
+        <button class="btn-danger" id="clearBtn">Clear All</button>
+      </div>
+    </header>
+
+    <div class="main-content">
+      <div class="canvas-container">
+        <div id="canvas">
+          <div id="curves"></div>
+          <div id="handles"></div>
+          <div id="points"></div>
+        </div>
+        <div class="instructions">
+          <strong>Click</strong> to add anchor points<br>
+          <strong>Drag</strong> from anchor to set handles<br>
+          <strong>Drag</strong> any point to edit<br>
+          <strong>Double-click</strong> to finish path
+        </div>
+        <div class="stats" id="stats">DIVs: 0</div>
+      </div>
+
+      <div class="sidebar">
+        <h3>How It Works</h3>
+        <div class="info-box">
+          <p>This renderer uses <code>&lt;div&gt;</code> elements!</p>
+          <p style="margin-top: 8px;">Each curve is sampled into small line segments, rendered as rotated divs with CSS transforms.</p>
+        </div>
+
+        <h3>Continuity Modes</h3>
+        <div class="info-box">
+          <p><code>C⁰</code> - Points meet (always enforced)</p>
+          <p><code>C¹</code> - Smooth tangent (direction matches)</p>
+          <p><code>C²</code> - Smooth curvature (acceleration matches)</p>
+        </div>
+
+        <h3>Segments</h3>
+        <div id="segmentList" class="segment-list">
+          <div style="color: #666; font-size: 0.8rem;">No segments yet. Click to start drawing!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      createPoint,
+      addPoints,
+      subtractPoints,
+      scalePoint,
+      distance,
+      sampleCurve,
+      segmentAngle,
+      segmentLength,
+      calculateC1Handle,
+      calculateC2Handle,
+      enforceC0,
+      enforceC1,
+      enforceC2,
+    } from './bezier-math.js';
+
+    // ========================================================================
+    // STATE
+    // ========================================================================
+
+    const state = {
+      segments: [],           // Array of { p0, p1, p2, p3 }
+      continuity: [],         // Array of 'independent' | 'c1' | 'c2' per junction
+      isDrawing: false,
+      currentSegment: null,   // Segment being drawn
+      dragTarget: null,       // { segmentIndex, pointType: 'p0'|'p1'|'p2'|'p3' }
+      segmentsPerCurve: 50,   // Number of DIV segments per curve
+    };
+
+    // ========================================================================
+    // DOM REFERENCES
+    // ========================================================================
+
+    const canvas = document.getElementById('canvas');
+    const curvesContainer = document.getElementById('curves');
+    const handlesContainer = document.getElementById('handles');
+    const pointsContainer = document.getElementById('points');
+    const continuitySelect = document.getElementById('continuity');
+    const segmentCountInput = document.getElementById('segmentCount');
+    const clearBtn = document.getElementById('clearBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const segmentList = document.getElementById('segmentList');
+    const statsEl = document.getElementById('stats');
+
+    // ========================================================================
+    // UTILS
+    // ========================================================================
+
+    function getMousePosition(event) {
+      const rect = canvas.getBoundingClientRect();
+      return createPoint(event.clientX - rect.left, event.clientY - rect.top);
+    }
+
+    function createDiv(className, style = {}) {
+      const div = document.createElement('div');
+      div.className = className;
+      Object.assign(div.style, style);
+      return div;
+    }
+
+    // ========================================================================
+    // RENDERING
+    // ========================================================================
+
+    function render() {
+      // Clear all containers
+      curvesContainer.innerHTML = '';
+      handlesContainer.innerHTML = '';
+      pointsContainer.innerHTML = '';
+
+      let totalDivs = 0;
+
+      // Draw completed segments
+      state.segments.forEach((seg, i) => {
+        totalDivs += drawSegment(seg, i);
+      });
+
+      // Draw current segment being drawn
+      if (state.currentSegment) {
+        totalDivs += drawSegment(state.currentSegment, state.segments.length, true);
+      }
+
+      // Update stats
+      statsEl.textContent = `DIVs: ${totalDivs}`;
+
+      updateSegmentList();
+    }
+
+    function drawSegment(seg, index, isCurrentlyDrawing = false) {
+      // Sample the curve
+      const points = sampleCurve(seg.p0, seg.p1, seg.p2, seg.p3, state.segmentsPerCurve);
+
+      // Draw curve using DIVs
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+
+        const len = segmentLength(p1, p2);
+        const angle = segmentAngle(p1, p2);
+
+        const curveDiv = createDiv('curve-segment', {
+          left: `${p1.x}px`,
+          top: `${p1.y - 1.5}px`,  // Center vertically (height is 3px)
+          width: `${len + 1}px`,   // +1 to avoid gaps
+          transform: `rotate(${angle}deg)`,
+          opacity: isCurrentlyDrawing ? '0.6' : '1',
+        });
+        curvesContainer.appendChild(curveDiv);
+      }
+
+      // Draw handle lines
+      drawHandleLine(seg.p0, seg.p1);
+      drawHandleLine(seg.p3, seg.p2);
+
+      // Draw control points
+      const cp1 = createDiv('control-point', {
+        left: `${seg.p1.x}px`,
+        top: `${seg.p1.y}px`,
+      });
+      cp1.dataset.segment = index;
+      cp1.dataset.point = 'p1';
+      pointsContainer.appendChild(cp1);
+
+      const cp2 = createDiv('control-point', {
+        left: `${seg.p2.x}px`,
+        top: `${seg.p2.y}px`,
+      });
+      cp2.dataset.segment = index;
+      cp2.dataset.point = 'p2';
+      pointsContainer.appendChild(cp2);
+
+      // Draw anchor points
+      if (index === 0 || isCurrentlyDrawing) {
+        const anchor0 = createDiv('anchor-point', {
+          left: `${seg.p0.x}px`,
+          top: `${seg.p0.y}px`,
+        });
+        anchor0.dataset.segment = index;
+        anchor0.dataset.point = 'p0';
+        pointsContainer.appendChild(anchor0);
+      }
+
+      const anchor3 = createDiv('anchor-point', {
+        left: `${seg.p3.x}px`,
+        top: `${seg.p3.y}px`,
+      });
+      anchor3.dataset.segment = index;
+      anchor3.dataset.point = 'p3';
+      pointsContainer.appendChild(anchor3);
+
+      return points.length - 1;  // Number of DIVs created for curve
+    }
+
+    function drawHandleLine(p1, p2) {
+      const len = segmentLength(p1, p2);
+      const angle = segmentAngle(p1, p2);
+
+      const lineDiv = createDiv('handle-line', {
+        left: `${p1.x}px`,
+        top: `${p1.y - 1}px`,
+        width: `${len}px`,
+        transform: `rotate(${angle}deg)`,
+      });
+      handlesContainer.appendChild(lineDiv);
+    }
+
+    function updateSegmentList() {
+      if (state.segments.length === 0) {
+        segmentList.innerHTML = '<div style="color: #666; font-size: 0.8rem;">No segments yet. Click to start drawing!</div>';
+        return;
+      }
+
+      segmentList.innerHTML = state.segments.map((seg, i) => {
+        const junctionMode = i > 0 ? state.continuity[i - 1] : null;
+        return `
+          <div class="segment-item">
+            <div><strong>Segment ${i + 1}</strong></div>
+            <div style="color: #888;">P₀: (${Math.round(seg.p0.x)}, ${Math.round(seg.p0.y)})</div>
+            <div style="color: #888;">P₃: (${Math.round(seg.p3.x)}, ${Math.round(seg.p3.y)})</div>
+            ${i > 0 ? `
+              <div class="junction-controls">
+                <span style="color: #666; font-size: 0.7rem;">Junction:</span>
+                <button class="junction-btn ${junctionMode === 'independent' ? 'active' : ''}" 
+                        data-junction="${i - 1}" data-mode="independent">Indep</button>
+                <button class="junction-btn ${junctionMode === 'c1' ? 'active' : ''}" 
+                        data-junction="${i - 1}" data-mode="c1">C¹</button>
+                <button class="junction-btn ${junctionMode === 'c2' ? 'active' : ''}" 
+                        data-junction="${i - 1}" data-mode="c2">C²</button>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+
+      // Add junction button listeners
+      segmentList.querySelectorAll('.junction-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const junctionIndex = parseInt(e.target.dataset.junction);
+          const mode = e.target.dataset.mode;
+          setJunctionContinuity(junctionIndex, mode);
+        });
+      });
+    }
+
+    // ========================================================================
+    // CONTINUITY ENFORCEMENT
+    // ========================================================================
+
+    function setJunctionContinuity(junctionIndex, mode) {
+      state.continuity[junctionIndex] = mode;
+      applyContinuity(junctionIndex);
+      render();
+    }
+
+    function applyContinuity(junctionIndex) {
+      const mode = state.continuity[junctionIndex];
+      const prevSeg = state.segments[junctionIndex];
+      const nextSeg = state.segments[junctionIndex + 1];
+
+      if (!prevSeg || !nextSeg) return;
+
+      let updated;
+      switch (mode) {
+        case 'c1':
+          updated = enforceC1(prevSeg, nextSeg);
+          break;
+        case 'c2':
+          updated = enforceC2(prevSeg, nextSeg);
+          break;
+        default:
+          updated = enforceC0(prevSeg, nextSeg);
+      }
+
+      state.segments[junctionIndex + 1] = updated;
+    }
+
+    function applyAllContinuity() {
+      for (let i = 0; i < state.continuity.length; i++) {
+        applyContinuity(i);
+      }
+    }
+
+    // ========================================================================
+    // INTERACTION HANDLERS
+    // ========================================================================
+
+    function handleMouseDown(e) {
+      const target = e.target;
+      const pos = getMousePosition(e);
+
+      // Check if clicking on an existing point
+      if (target.classList.contains('anchor-point') || target.classList.contains('control-point')) {
+        const segIndex = parseInt(target.dataset.segment);
+        const pointType = target.dataset.point;
+
+        // Start dragging
+        state.dragTarget = { segmentIndex: segIndex, pointType };
+        e.preventDefault();
+        return;
+      }
+
+      // Only start drawing if clicking on canvas itself
+      if (target.id !== 'canvas' && target.id !== 'curves' && 
+          target.id !== 'handles' && target.id !== 'points') {
+        return;
+      }
+
+      // Start drawing new segment
+      if (!state.isDrawing) {
+        const startPoint = state.segments.length > 0 
+          ? { ...state.segments[state.segments.length - 1].p3 }
+          : pos;
+
+        state.currentSegment = {
+          p0: startPoint,
+          p1: { ...startPoint },
+          p2: { ...pos },
+          p3: { ...pos },
+        };
+        state.isDrawing = true;
+      }
+
+      render();
+    }
+
+    function handleMouseMove(e) {
+      const pos = getMousePosition(e);
+
+      // Handle dragging
+      if (state.dragTarget) {
+        const { segmentIndex, pointType } = state.dragTarget;
+        const seg = state.segments[segmentIndex];
+
+        // For anchor points that are shared between segments
+        if (pointType === 'p0' && segmentIndex > 0) {
+          state.segments[segmentIndex - 1].p3 = { ...pos };
+        }
+        if (pointType === 'p3' && segmentIndex < state.segments.length - 1) {
+          state.segments[segmentIndex + 1].p0 = { ...pos };
+        }
+
+        seg[pointType] = { ...pos };
+
+        // Apply continuity when needed
+        if (pointType === 'p2' && segmentIndex < state.continuity.length) {
+          applyContinuity(segmentIndex);
+        }
+
+        if (pointType === 'p0' || pointType === 'p3') {
+          applyAllContinuity();
+        }
+
+        render();
+        return;
+      }
+
+      // Handle drawing
+      if (state.isDrawing && state.currentSegment) {
+        const startPoint = state.currentSegment.p0;
+        const handleOffset = subtractPoints(pos, startPoint);
+        
+        state.currentSegment.p1 = addPoints(startPoint, handleOffset);
+        state.currentSegment.p2 = subtractPoints(pos, scalePoint(handleOffset, 0.3));
+        state.currentSegment.p3 = pos;
+
+        render();
+      }
+    }
+
+    function handleMouseUp(e) {
+      if (state.dragTarget) {
+        state.dragTarget = null;
+        return;
+      }
+
+      if (state.isDrawing && state.currentSegment) {
+        const defaultMode = continuitySelect.value;
+        
+        if (state.segments.length > 0) {
+          state.continuity.push(defaultMode);
+        }
+
+        state.segments.push(state.currentSegment);
+        
+        if (state.segments.length > 1) {
+          applyContinuity(state.continuity.length - 1);
+        }
+
+        state.currentSegment = null;
+        state.isDrawing = false;
+
+        render();
+      }
+    }
+
+    function handleDoubleClick(e) {
+      state.isDrawing = false;
+      state.currentSegment = null;
+      render();
+    }
+
+    function handleClear() {
+      state.segments = [];
+      state.continuity = [];
+      state.isDrawing = false;
+      state.currentSegment = null;
+      state.dragTarget = null;
+      render();
+    }
+
+    function handleExport() {
+      const data = {
+        segments: state.segments,
+        continuity: state.continuity,
+      };
+      const json = JSON.stringify(data, null, 2);
+      
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'bezier-curves.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function handleSegmentCountChange() {
+      state.segmentsPerCurve = Math.max(10, Math.min(200, parseInt(segmentCountInput.value) || 50));
+      render();
+    }
+
+    // ========================================================================
+    // EVENT LISTENERS
+    // ========================================================================
+
+    canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('dblclick', handleDoubleClick);
+    canvas.addEventListener('mouseleave', () => {
+      if (state.dragTarget) {
+        state.dragTarget = null;
+      }
+    });
+
+    clearBtn.addEventListener('click', handleClear);
+    exportBtn.addEventListener('click', handleExport);
+    segmentCountInput.addEventListener('change', handleSegmentCountChange);
+
+    // Initial render
+    render();
+  </script>
+</body>
+</html>

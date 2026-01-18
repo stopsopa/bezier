@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bézier Curve Editor - SVG</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          "Segoe UI",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: linear-gradient(
+          135deg,
+          #1a1a2e 0%,
+          #16213e 50%,
+          #0f3460 100%
+        );
+        min-height: 100vh;
+        color: #e0e0e0;
+      }
+
+      .container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        padding: 16px;
+        gap: 16px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 20px;
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        background: linear-gradient(90deg, #00d9ff, #8b5cf6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .toolbar button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #00d9ff, #0099cc);
+        color: #000;
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+      }
+
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.1);
+        color: #e0e0e0;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .btn-danger {
+        background: linear-gradient(135deg, #ff4757, #c0392b);
+        color: #fff;
+      }
+
+      .btn-danger:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(255, 71, 87, 0.3);
+      }
+
+      .continuity-selector {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .continuity-selector label {
+        font-size: 0.875rem;
+        color: #a0a0a0;
+      }
+
+      .continuity-selector select {
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.1);
+        color: #e0e0e0;
+        font-size: 0.875rem;
+        cursor: pointer;
+      }
+
+      .main-content {
+        flex: 1;
+        display: flex;
+        gap: 16px;
+      }
+
+      .canvas-container {
+        flex: 1;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+        position: relative;
+      }
+
+      #canvas {
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+      }
+
+      .sidebar {
+        width: 280px;
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 16px;
+        overflow-y: auto;
+      }
+
+      .sidebar h3 {
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: #888;
+        margin-bottom: 12px;
+      }
+
+      .info-box {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 16px;
+        font-size: 0.8rem;
+        line-height: 1.6;
+      }
+
+      .info-box code {
+        background: rgba(0, 217, 255, 0.2);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: "Fira Code", monospace;
+      }
+
+      .segment-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .segment-item {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 0.8rem;
+        border: 1px solid transparent;
+        transition: all 0.2s ease;
+      }
+
+      .segment-item:hover {
+        border-color: rgba(0, 217, 255, 0.3);
+      }
+
+      .segment-item.selected {
+        border-color: #00d9ff;
+        background: rgba(0, 217, 255, 0.1);
+      }
+
+      .junction-controls {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .junction-btn {
+        padding: 4px 8px;
+        border: none;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.1);
+        color: #e0e0e0;
+        transition: all 0.2s;
+      }
+
+      .junction-btn.active {
+        background: #00d9ff;
+        color: #000;
+      }
+
+      .junction-btn:hover:not(.active) {
+        background: rgba(255, 255, 255, 0.2);
+      }
+
+      /* SVG styles */
+      .curve-path {
+        fill: none;
+        stroke: #00d9ff;
+        stroke-width: 3;
+        stroke-linecap: round;
+      }
+
+      .handle-line {
+        stroke: rgba(139, 92, 246, 0.6);
+        stroke-width: 1.5;
+        stroke-dasharray: 4, 4;
+      }
+
+      .anchor-point {
+        fill: #00d9ff;
+        stroke: #fff;
+        stroke-width: 2;
+        cursor: move;
+        transition: transform 0.1s ease;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+
+      .anchor-point:hover {
+        transform: scale(1.3);
+      }
+
+      .control-point {
+        fill: #8b5cf6;
+        stroke: #fff;
+        stroke-width: 2;
+        cursor: move;
+        transition: transform 0.1s ease;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+
+      .control-point:hover {
+        transform: scale(1.3);
+      }
+
+      .point-label {
+        font-size: 10px;
+        fill: #888;
+        pointer-events: none;
+      }
+
+      .instructions {
+        position: absolute;
+        bottom: 16px;
+        left: 16px;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        color: #a0a0a0;
+        max-width: 300px;
+      }
+
+      .instructions strong {
+        color: #00d9ff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>✨ Bézier Curve Editor (SVG)</h1>
+        <div class="toolbar">
+          <div class="continuity-selector">
+            <label for="continuity">Junction Mode:</label>
+            <select id="continuity">
+              <option value="independent">Independent</option>
+              <option value="c1" selected>C¹ (Tangent)</option>
+              <option value="c2">C² (Curvature)</option>
+            </select>
+          </div>
+          <button class="btn-secondary" id="exportBtn">Export JSON</button>
+          <button class="btn-danger" id="clearBtn">Clear All</button>
+        </div>
+      </header>
+
+      <div class="main-content">
+        <div class="canvas-container">
+          <svg id="canvas">
+            <defs>
+              <filter id="glow">
+                <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+                <feMerge>
+                  <feMergeNode in="coloredBlur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+            <g id="curves"></g>
+            <g id="handles"></g>
+            <g id="points"></g>
+          </svg>
+          <div class="instructions">
+            <strong>Click</strong> to add anchor points<br />
+            <strong>Drag</strong> from anchor to set handles<br />
+            <strong>Drag</strong> any point to edit<br />
+            <strong>Double-click</strong> to finish path
+          </div>
+        </div>
+
+        <div class="sidebar">
+          <h3>Instructions</h3>
+          <div class="info-box">
+            <p><code>C⁰</code> - Points meet (always enforced)</p>
+            <p><code>C¹</code> - Smooth tangent (direction matches)</p>
+            <p><code>C²</code> - Smooth curvature (acceleration matches)</p>
+          </div>
+
+          <h3>Segments</h3>
+          <div id="segmentList" class="segment-list">
+            <div style="color: #666; font-size: 0.8rem">
+              No segments yet. Click to start drawing!
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import {
+        createPoint,
+        addPoints,
+        subtractPoints,
+        scalePoint,
+        distance,
+        lerp,
+        cubicBezier,
+        calculateC1Handle,
+        calculateC2Handle,
+        enforceC0,
+        enforceC1,
+        enforceC2,
+      } from "./bezier-math.js";
+
+      // ========================================================================
+      // STATE
+      // ========================================================================
+
+      const state = {
+        segments: [], // Array of { p0, p1, p2, p3 }
+        continuity: [], // Array of 'independent' | 'c1' | 'c2' per junction
+        isDrawing: false,
+        currentSegment: null, // Segment being drawn
+        dragTarget: null, // { segmentIndex, pointType: 'p0'|'p1'|'p2'|'p3' }
+        selectedJunction: null, // Index of selected junction
+      };
+
+      // ========================================================================
+      // DOM REFERENCES
+      // ========================================================================
+
+      const svg = document.getElementById("canvas");
+      const curvesGroup = document.getElementById("curves");
+      const handlesGroup = document.getElementById("handles");
+      const pointsGroup = document.getElementById("points");
+      const continuitySelect = document.getElementById("continuity");
+      const clearBtn = document.getElementById("clearBtn");
+      const exportBtn = document.getElementById("exportBtn");
+      const segmentList = document.getElementById("segmentList");
+
+      // ========================================================================
+      // UTILS
+      // ========================================================================
+
+      function getMousePosition(event) {
+        const rect = svg.getBoundingClientRect();
+        return createPoint(event.clientX - rect.left, event.clientY - rect.top);
+      }
+
+      function createSvgElement(tag, attrs = {}) {
+        const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+        for (const [key, value] of Object.entries(attrs)) {
+          el.setAttribute(key, value);
+        }
+        return el;
+      }
+
+      // ========================================================================
+      // RENDERING
+      // ========================================================================
+
+      function render() {
+        // Clear all groups
+        curvesGroup.innerHTML = "";
+        handlesGroup.innerHTML = "";
+        pointsGroup.innerHTML = "";
+
+        // Draw completed segments
+        state.segments.forEach((seg, i) => {
+          drawSegment(seg, i);
+        });
+
+        // Draw current segment being drawn
+        if (state.currentSegment) {
+          drawSegment(state.currentSegment, state.segments.length, true);
+        }
+
+        updateSegmentList();
+      }
+
+      function drawSegment(seg, index, isCurrentlyDrawing = false) {
+        // Draw curve path
+        const pathData = `M ${seg.p0.x} ${seg.p0.y} C ${seg.p1.x} ${seg.p1.y}, ${seg.p2.x} ${seg.p2.y}, ${seg.p3.x} ${seg.p3.y}`;
+        const path = createSvgElement("path", {
+          d: pathData,
+          class: "curve-path",
+          filter: "url(#glow)",
+        });
+        if (isCurrentlyDrawing) {
+          path.style.opacity = "0.6";
+        }
+        curvesGroup.appendChild(path);
+
+        // Draw handle lines
+        const handleLine1 = createSvgElement("line", {
+          x1: seg.p0.x,
+          y1: seg.p0.y,
+          x2: seg.p1.x,
+          y2: seg.p1.y,
+          class: "handle-line",
+        });
+        handlesGroup.appendChild(handleLine1);
+
+        const handleLine2 = createSvgElement("line", {
+          x1: seg.p3.x,
+          y1: seg.p3.y,
+          x2: seg.p2.x,
+          y2: seg.p2.y,
+          class: "handle-line",
+        });
+        handlesGroup.appendChild(handleLine2);
+
+        // Draw control points (circles)
+        const cp1 = createSvgElement("circle", {
+          cx: seg.p1.x,
+          cy: seg.p1.y,
+          r: 6,
+          class: "control-point",
+          "data-segment": index,
+          "data-point": "p1",
+        });
+        pointsGroup.appendChild(cp1);
+
+        const cp2 = createSvgElement("circle", {
+          cx: seg.p2.x,
+          cy: seg.p2.y,
+          r: 6,
+          class: "control-point",
+          "data-segment": index,
+          "data-point": "p2",
+        });
+        pointsGroup.appendChild(cp2);
+
+        // Draw anchor points (rectangles)
+        // Only draw p0 for first segment or if not continuing from previous
+        if (index === 0 || isCurrentlyDrawing) {
+          const anchor0 = createSvgElement("rect", {
+            x: seg.p0.x - 6,
+            y: seg.p0.y - 6,
+            width: 12,
+            height: 12,
+            class: "anchor-point",
+            "data-segment": index,
+            "data-point": "p0",
+          });
+          pointsGroup.appendChild(anchor0);
+        }
+
+        // Always draw p3
+        const anchor3 = createSvgElement("rect", {
+          x: seg.p3.x - 6,
+          y: seg.p3.y - 6,
+          width: 12,
+          height: 12,
+          class: "anchor-point",
+          "data-segment": index,
+          "data-point": "p3",
+        });
+        pointsGroup.appendChild(anchor3);
+      }
+
+      function updateSegmentList() {
+        if (state.segments.length === 0) {
+          segmentList.innerHTML =
+            '<div style="color: #666; font-size: 0.8rem;">No segments yet. Click to start drawing!</div>';
+          return;
+        }
+
+        segmentList.innerHTML = state.segments
+          .map((seg, i) => {
+            const junctionMode = i > 0 ? state.continuity[i - 1] : null;
+            return `
+          <div class="segment-item">
+            <div><strong>Segment ${i + 1}</strong></div>
+            <div style="color: #888;">P₀: (${Math.round(seg.p0.x)}, ${Math.round(seg.p0.y)})</div>
+            <div style="color: #888;">P₃: (${Math.round(seg.p3.x)}, ${Math.round(seg.p3.y)})</div>
+            ${
+              i > 0
+                ? `
+              <div class="junction-controls">
+                <span style="color: #666; font-size: 0.7rem;">Junction:</span>
+                <button class="junction-btn ${junctionMode === "independent" ? "active" : ""}" 
+                        data-junction="${i - 1}" data-mode="independent">Indep</button>
+                <button class="junction-btn ${junctionMode === "c1" ? "active" : ""}" 
+                        data-junction="${i - 1}" data-mode="c1">C¹</button>
+                <button class="junction-btn ${junctionMode === "c2" ? "active" : ""}" 
+                        data-junction="${i - 1}" data-mode="c2">C²</button>
+              </div>
+            `
+                : ""
+            }
+          </div>
+        `;
+          })
+          .join("");
+
+        // Add junction button listeners
+        segmentList.querySelectorAll(".junction-btn").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            const junctionIndex = parseInt(e.target.dataset.junction);
+            const mode = e.target.dataset.mode;
+            setJunctionContinuity(junctionIndex, mode);
+          });
+        });
+      }
+
+      // ========================================================================
+      // CONTINUITY ENFORCEMENT
+      // ========================================================================
+
+      function setJunctionContinuity(junctionIndex, mode) {
+        state.continuity[junctionIndex] = mode;
+        applyContinuity(junctionIndex);
+        render();
+      }
+
+      function applyContinuity(junctionIndex) {
+        const mode = state.continuity[junctionIndex];
+        const prevSeg = state.segments[junctionIndex];
+        const nextSeg = state.segments[junctionIndex + 1];
+
+        if (!prevSeg || !nextSeg) return;
+
+        let updated;
+        switch (mode) {
+          case "c1":
+            updated = enforceC1(prevSeg, nextSeg);
+            break;
+          case "c2":
+            updated = enforceC2(prevSeg, nextSeg);
+            break;
+          default:
+            updated = enforceC0(prevSeg, nextSeg);
+        }
+
+        state.segments[junctionIndex + 1] = updated;
+      }
+
+      function applyAllContinuity() {
+        for (let i = 0; i < state.continuity.length; i++) {
+          applyContinuity(i);
+        }
+      }
+
+      // ========================================================================
+      // INTERACTION HANDLERS
+      // ========================================================================
+
+      function handleMouseDown(e) {
+        const target = e.target;
+        const pos = getMousePosition(e);
+
+        // Check if clicking on an existing point
+        if (
+          target.classList.contains("anchor-point") ||
+          target.classList.contains("control-point")
+        ) {
+          const segIndex = parseInt(target.dataset.segment);
+          const pointType = target.dataset.point;
+
+          // Start dragging
+          state.dragTarget = { segmentIndex: segIndex, pointType };
+          return;
+        }
+
+        // Start drawing new segment
+        if (!state.isDrawing) {
+          const startPoint =
+            state.segments.length > 0
+              ? { ...state.segments[state.segments.length - 1].p3 }
+              : pos;
+
+          state.currentSegment = {
+            p0: startPoint,
+            p1: { ...startPoint },
+            p2: { ...pos },
+            p3: { ...pos },
+          };
+          state.isDrawing = true;
+        }
+
+        render();
+      }
+
+      function handleMouseMove(e) {
+        const pos = getMousePosition(e);
+
+        // Handle dragging
+        if (state.dragTarget) {
+          const { segmentIndex, pointType } = state.dragTarget;
+          const seg = state.segments[segmentIndex];
+
+          // For anchor points that are shared between segments
+          if (pointType === "p0" && segmentIndex > 0) {
+            // Also update previous segment's p3
+            state.segments[segmentIndex - 1].p3 = { ...pos };
+          }
+          if (pointType === "p3" && segmentIndex < state.segments.length - 1) {
+            // Also update next segment's p0
+            state.segments[segmentIndex + 1].p0 = { ...pos };
+          }
+
+          seg[pointType] = { ...pos };
+
+          // When moving control points, apply continuity to affected junctions
+          if (pointType === "p2" && segmentIndex < state.continuity.length) {
+            applyContinuity(segmentIndex);
+          }
+          if (pointType === "p1" && segmentIndex > 0) {
+            // Moving p1 might affect the previous junction if it's C²
+            // but we keep the current segment's p1 as the user wants
+          }
+
+          // When moving anchor points, reapply continuity
+          if (pointType === "p0" || pointType === "p3") {
+            applyAllContinuity();
+          }
+
+          render();
+          return;
+        }
+
+        // Handle drawing
+        if (state.isDrawing && state.currentSegment) {
+          // Update handles symmetrically while drawing
+          const startPoint = state.currentSegment.p0;
+          const handleOffset = subtractPoints(pos, startPoint);
+
+          state.currentSegment.p1 = addPoints(startPoint, handleOffset);
+          state.currentSegment.p2 = subtractPoints(
+            pos,
+            scalePoint(handleOffset, 0.3),
+          );
+          state.currentSegment.p3 = pos;
+
+          render();
+        }
+      }
+
+      function handleMouseUp(e) {
+        if (state.dragTarget) {
+          state.dragTarget = null;
+          return;
+        }
+
+        // Finish placing current segment
+        if (state.isDrawing && state.currentSegment) {
+          // Apply default continuity from selector
+          const defaultMode = continuitySelect.value;
+
+          if (state.segments.length > 0) {
+            state.continuity.push(defaultMode);
+          }
+
+          state.segments.push(state.currentSegment);
+
+          // Apply continuity for the new junction
+          if (state.segments.length > 1) {
+            applyContinuity(state.continuity.length - 1);
+          }
+
+          state.currentSegment = null;
+          state.isDrawing = false;
+
+          render();
+        }
+      }
+
+      function handleDoubleClick(e) {
+        // Finish the current path
+        state.isDrawing = false;
+        state.currentSegment = null;
+        render();
+      }
+
+      function handleClear() {
+        state.segments = [];
+        state.continuity = [];
+        state.isDrawing = false;
+        state.currentSegment = null;
+        state.dragTarget = null;
+        render();
+      }
+
+      function handleExport() {
+        const data = {
+          segments: state.segments,
+          continuity: state.continuity,
+        };
+        const json = JSON.stringify(data, null, 2);
+
+        // Create download
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "bezier-curves.json";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      // ========================================================================
+      // EVENT LISTENERS
+      // ========================================================================
+
+      svg.addEventListener("mousedown", handleMouseDown);
+      svg.addEventListener("mousemove", handleMouseMove);
+      svg.addEventListener("mouseup", handleMouseUp);
+      svg.addEventListener("dblclick", handleDoubleClick);
+      svg.addEventListener("mouseleave", () => {
+        if (state.dragTarget) {
+          state.dragTarget = null;
+        }
+      });
+
+      clearBtn.addEventListener("click", handleClear);
+      exportBtn.addEventListener("click", handleExport);
+
+      // Initial render
+      render();
+    </script>
+  </body>
+</html>
