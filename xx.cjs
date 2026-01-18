@@ -57,6 +57,23 @@ open "file://$(realpath "index.html")"
 `,
       confirm: false,
     },
+        [`coverage`]: {
+      command: `
+set -e
+source .env
+cat <<EEE
+
+    open "file://$(realpath "coverage/index.html")"
+
+EEE
+
+echo -e "\n      Press enter to continue\n"
+read
+
+open "file://$(realpath "coverage/index.html")"
+`,
+      confirm: false,
+    },
     ...setup,
   };
 };
