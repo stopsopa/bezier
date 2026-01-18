@@ -319,6 +319,7 @@
             </select>
           </div>
           <button class="btn-secondary" id="exportBtn">Export JSON</button>
+          <button class="btn-secondary" id="copyUrlBtn">Copy URL</button>
           <button class="btn-danger" id="clearBtn">Clear All</button>
         </div>
       </header>
@@ -423,6 +424,137 @@
       }
 
       // ========================================================================
+      // URL SERIALIZATION
+      // ========================================================================
+
+      // Serialize a coordinate (use 'n' prefix for negatives to avoid conflict with '-')
+      function serializeCoord(n) {
+        const rounded = Math.round(n * 10) / 10; // 1 decimal precision
+        if (rounded < 0) {
+          return 'n' + Math.abs(rounded);
+        }
+        return String(rounded);
+      }
+
+      // Parse a coordinate (handle 'n' prefix for negatives)
+      function parseCoord(c) {
+        if (c.startsWith('n')) {
+          return -parseFloat(c.slice(1));
+        }
+        return parseFloat(c);
+      }
+
+      // Serialize a point to "x~y"
+      function serializePoint(p) {
+        return serializeCoord(p.x) + '~' + serializeCoord(p.y);
+      }
+
+      // Parse a point from "x~y"
+      function parsePoint(str) {
+        const [x, y] = str.split('~').map(parseCoord);
+        return { x, y };
+      }
+
+      // Serialize a segment to "x0~y0_x1~y1_x2~y2_x3~y3"
+      function serializeSegment(seg) {
+        return [seg.p0, seg.p1, seg.p2, seg.p3].map(serializePoint).join('_');
+      }
+
+      // Parse a segment from "x0~y0_x1~y1_x2~y2_x3~y3"
+      function parseSegment(str) {
+        const points = str.split('_').map(parsePoint);
+        return { p0: points[0], p1: points[1], p2: points[2], p3: points[3] };
+      }
+
+      // Continuity mode to single letter
+      function continuityToLetter(mode) {
+        if (mode === 'c1') return 't';
+        if (mode === 'c2') return 'c';
+        return 'i'; // independent
+      }
+
+      // Single letter to continuity mode
+      function letterToContinuity(letter) {
+        if (letter === 't') return 'c1';
+        if (letter === 'c') return 'c2';
+        return 'independent';
+      }
+
+      // Serialize a single curve to string
+      function serializeCurve(curve) {
+        let result = '';
+        curve.segments.forEach((seg, i) => {
+          if (i > 0) {
+            // Add continuity marker before this segment
+            const cont = curve.continuity[i - 1] || 'independent';
+            result += '-' + continuityToLetter(cont);
+          }
+          result += serializeSegment(seg);
+        });
+        return result;
+      }
+
+      // Parse a single curve from string
+      function parseCurve(str) {
+        const segments = [];
+        const continuity = [];
+        
+        // Split by continuity markers (-i, -t, -c)
+        const parts = str.split(/-(i|t|c)/);
+        
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (!part) continue;
+          
+          if (part === 'i' || part === 't' || part === 'c') {
+            continuity.push(letterToContinuity(part));
+          } else {
+            segments.push(parseSegment(part));
+          }
+        }
+        return { segments, continuity };
+      }
+
+      // Serialize all curves to URL-safe string
+      function serializeToURL() {
+        if (state.curves.length === 0) return '';
+        return state.curves.map(serializeCurve).join('!');
+      }
+
+      // Parse all curves from URL string
+      function parseFromURL(str) {
+        if (!str) return [];
+        return str.split('!').filter(s => s).map(parseCurve);
+      }
+
+      // Update URL hash with current state
+      function updateURLHash() {
+        const serialized = serializeToURL();
+        if (serialized) {
+          window.history.replaceState(null, '', '#' + serialized);
+        } else {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      }
+
+      // Load curves from URL hash
+      function loadFromURLHash() {
+        const hash = window.location.hash.slice(1); // Remove '#'
+        if (hash) {
+          try {
+            const curves = parseFromURL(hash);
+            if (curves.length > 0) {
+              state.curves = curves;
+              return true;
+            }
+          } catch (e) {
+            console.warn('Failed to parse URL hash:', e);
+          }
+        }
+        return false;
+      }
+
+      // ========================================================================
       // NODE DELETION
       // ========================================================================
 
@@ -498,6 +630,7 @@
       const continuitySelect = document.getElementById("continuity");
       const clearBtn = document.getElementById("clearBtn");
       const exportBtn = document.getElementById("exportBtn");
+      const copyUrlBtn = document.getElementById("copyUrlBtn");
       const segmentList = document.getElementById("segmentList");
 
       // ========================================================================
@@ -540,6 +673,11 @@
         }
 
         updateSegmentList();
+        
+        // Update URL hash to keep it in sync (but not during drawing)
+        if (!state.isDrawing) {
+          updateURLHash();
+        }
       }
 
       function drawSegment(seg, curveIndex, segIndex, totalSegments, isCurrentlyDrawing = false) {
@@ -1006,6 +1144,27 @@
         URL.revokeObjectURL(url);
       }
 
+      function handleCopyUrl() {
+        const serialized = serializeToURL();
+        if (!serialized) {
+          alert('No curves to share!');
+          return;
+        }
+        const fullUrl = window.location.origin + window.location.pathname + '#' + serialized;
+        navigator.clipboard.writeText(fullUrl).then(() => {
+          // Temporarily change button text to show success
+          const originalText = copyUrlBtn.textContent;
+          copyUrlBtn.textContent = 'Copied!';
+          setTimeout(() => {
+            copyUrlBtn.textContent = originalText;
+          }, 1500);
+        }).catch(err => {
+          console.error('Failed to copy URL:', err);
+          // Fallback: show in a prompt
+          prompt('Copy this URL:', fullUrl);
+        });
+      }
+
       // ========================================================================
       // EVENT LISTENERS
       // ========================================================================
@@ -1022,6 +1181,7 @@
 
       clearBtn.addEventListener("click", handleClear);
       exportBtn.addEventListener("click", handleExport);
+      copyUrlBtn.addEventListener("click", handleCopyUrl);
 
       // Keyboard events for space+drag panning
       document.addEventListener('keydown', (e) => {
@@ -1045,6 +1205,9 @@
       svg.addEventListener('contextmenu', (e) => {
         if (e.button === 1) e.preventDefault();
       });
+
+      // Load from URL hash if present
+      loadFromURLHash();
 
       // Initial render
       render();

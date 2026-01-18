@@ -653,6 +653,149 @@ Since this is a visual, interactive application, verification is primarily manua
 
 ---
 
+## 9. URL Serialization Format
+
+### 9.1 Design Goals
+
+- **URL-safe**: Use only characters that `encodeURIComponent` does NOT escape
+- **Compact**: Minimize URL length for sharing
+- **Human-readable**: Reasonably parseable by inspection
+- **Complete**: Store all curve data including continuity modes
+
+### 9.2 Safe Characters
+
+`encodeURIComponent` leaves these characters **unencoded**:
+
+| Type         | Characters                          |
+| ------------ | ----------------------------------- |
+| Alphanumeric | `A-Z`, `a-z`, `0-9`                 |
+| Special      | `-` `_` `.` `!` `~` `*` `'` `(` `)` |
+
+Characters to **avoid** (these get percent-encoded):
+
+- `,` `:` `;` `/` `?` `#` `&` `=` `+` `@` `$` `%` `[` `]` `{` `}` `<` `>` `|` `\` `^` `` ` `` `"` and space
+
+### 9.3 Proposed Format
+
+```
+<curve>!<curve>!<curve>
+```
+
+Each `<curve>` is:
+
+```
+<segment>-<continuity><segment>-<continuity><segment>
+```
+
+Each `<segment>` is:
+
+```
+<x0>~<y0>_<x1>~<y1>_<x2>~<y2>_<x3>~<y3>
+```
+
+| Delimiter | Purpose                           |
+| --------- | --------------------------------- |
+| `!`       | Separates independent curves      |
+| `-`       | Separates segments within a curve |
+| `_`       | Separates points within a segment |
+| `~`       | Separates x and y coordinates     |
+
+### 9.4 Continuity Encoding
+
+After each `-` segment separator, a single letter indicates continuity mode:
+
+| Letter | Mode                        |
+| ------ | --------------------------- |
+| `i`    | Independent (no constraint) |
+| `t`    | C¹ Tangent continuity       |
+| `c`    | C² Curvature continuity     |
+
+### 9.5 Coordinate Encoding
+
+- **Integers**: Use plain numbers (e.g., `150`, `-30`)
+- **Decimals**: Use `.` (e.g., `150.5`)
+- **Negative**: Use `n` prefix instead of `-` to avoid conflict with segment separator (e.g., `n30` = -30)
+
+### 9.6 Full Example
+
+**Two curves:**
+
+- Curve 1: Two segments with C¹ continuity at junction
+  - Segment 1: p0(100,200) p1(150,250) p2(180,280) p3(200,300)
+  - Segment 2: p0(200,300) p1(220,320) p2(250,350) p3(270,400)
+- Curve 2: One segment
+  - Segment 1: p0(50,50) p1(80,100) p2(120,150) p3(150,200)
+
+**Serialized:**
+
+```
+100~200_150~250_180~280_200~300-t200~300_220~320_250~350_270~400!50~50_80~100_120~150_150~200
+```
+
+**Structure breakdown:**
+
+```
+100~200_150~250_180~280_200~300   ← Curve1, Segment1
+-t                                ← C¹ continuity joint
+200~300_220~320_250~350_270~400   ← Curve1, Segment2
+!                                 ← New curve
+50~50_80~100_120~150_150~200      ← Curve2, Segment1
+```
+
+### 9.7 Parsing Algorithm
+
+```javascript
+function parseURL(str) {
+  return str.split("!").map((curveStr) => {
+    const segments = [];
+    const continuity = [];
+
+    // Split by continuity markers (-i, -t, -c) or plain dash
+    const parts = curveStr.split(/-(i|t|c)?/);
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (!part) continue;
+
+      if (part === "i" || part === "t" || part === "c") {
+        continuity.push(part === "i" ? "independent" : part === "t" ? "c1" : "c2");
+      } else {
+        segments.push(parseSegment(part));
+      }
+    }
+    return { segments, continuity };
+  });
+}
+
+function parseSegment(str) {
+  const points = str.split("_").map((p) => {
+    const [x, y] = p.split("~").map(parseCoord);
+    return { x, y };
+  });
+  return { p0: points[0], p1: points[1], p2: points[2], p3: points[3] };
+}
+
+function parseCoord(c) {
+  return c.startsWith("n") ? -parseFloat(c.slice(1)) : parseFloat(c);
+}
+```
+
+### 9.8 URL Integration
+
+Store in URL hash for easy sharing:
+
+```
+https://example.com/svg.html#100~200_150~250_180~280_200~300
+```
+
+Or use query parameter:
+
+```
+https://example.com/svg.html?d=100~200_150~250_180~280_200~300
+```
+
+---
+
 ## Open Questions
 
 > [!NOTE]
