@@ -92,6 +92,36 @@
       box-shadow: 0 4px 12px rgba(255, 71, 87, 0.3);
     }
 
+    .nav-links {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-right: 16px;
+      padding-right: 16px;
+      border-right: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .nav-links span {
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    .nav-link {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      text-decoration: none;
+      color: #e0e0e0;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      transition: all 0.2s ease;
+    }
+
+    .nav-link:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
     .continuity-selector {
       display: flex;
       align-items: center;
@@ -308,6 +338,11 @@
     <header>
       <h1>🎨 Bézier Curve Editor (DIV)</h1>
       <div class="toolbar">
+        <div class="nav-links">
+          <span>View in:</span>
+          <a href="svg.html" class="nav-link" id="navSvg">SVG</a>
+          <a href="canvas.html" class="nav-link" id="navCanvas">Canvas</a>
+        </div>
         <div class="segment-selector">
           <label for="segmentCount">Segments/Curve:</label>
           <input type="number" id="segmentCount" value="50" min="10" max="200">
@@ -504,6 +539,13 @@
       } else {
         window.history.replaceState(null, '', window.location.pathname);
       }
+      updateNavLinks();
+    }
+
+    function updateNavLinks() {
+      const hash = window.location.hash;
+      document.getElementById('navSvg').href = 'svg.html' + hash;
+      document.getElementById('navCanvas').href = 'canvas.html' + hash;
     }
 
     function loadFromURLHash() {
@@ -1137,6 +1179,7 @@
 
     // Load from URL hash if present
     loadFromURLHash();
+    updateNavLinks();
 
     // Initial render
     render();
