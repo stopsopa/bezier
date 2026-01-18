@@ -416,6 +416,12 @@
       enforceC1,
       enforceC2,
     } from './bezier-math.js';
+    import {
+      serializeCurves,
+      parseCurvesFromURL,
+      deleteNodeFromCurves,
+      debounce,
+    } from './common.js';
 
     // ========================================================================
     // STATE
@@ -446,94 +452,11 @@
     };
 
     // ========================================================================
-    // URL SERIALIZATION
+    // URL SERIALIZATION (uses common.js)
     // ========================================================================
 
-    function serializeCoord(n) {
-      const rounded = Math.round(n * 10) / 10;
-      if (rounded < 0) {
-        return 'n' + Math.abs(rounded);
-      }
-      return String(rounded);
-    }
-
-    function parseCoord(c) {
-      if (c.startsWith('n')) {
-        return -parseFloat(c.slice(1));
-      }
-      return parseFloat(c);
-    }
-
-    function serializePoint(p) {
-      return serializeCoord(p.x) + '~' + serializeCoord(p.y);
-    }
-
-    function parsePoint(str) {
-      const [x, y] = str.split('~').map(parseCoord);
-      return { x, y };
-    }
-
-    function serializeSegment(seg) {
-      return [seg.p0, seg.p1, seg.p2, seg.p3].map(serializePoint).join('_');
-    }
-
-    function parseSegment(str) {
-      const points = str.split('_').map(parsePoint);
-      return { p0: points[0], p1: points[1], p2: points[2], p3: points[3] };
-    }
-
-    function continuityToLetter(mode) {
-      if (mode === 'c1') return 't';
-      if (mode === 'c2') return 'c';
-      return 'i';
-    }
-
-    function letterToContinuity(letter) {
-      if (letter === 't') return 'c1';
-      if (letter === 'c') return 'c2';
-      return 'independent';
-    }
-
-    function serializeCurve(curve) {
-      let result = '';
-      curve.segments.forEach((seg, i) => {
-        if (i > 0) {
-          const cont = curve.continuity[i - 1] || 'independent';
-          result += '-' + continuityToLetter(cont);
-        }
-        result += serializeSegment(seg);
-      });
-      return result;
-    }
-
-    function parseCurve(str) {
-      const segments = [];
-      const continuity = [];
-      const parts = str.split(/-(i|t|c)/);
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        if (!part) continue;
-        if (part === 'i' || part === 't' || part === 'c') {
-          continuity.push(letterToContinuity(part));
-        } else {
-          segments.push(parseSegment(part));
-        }
-      }
-      return { segments, continuity };
-    }
-
-    function serializeToURL() {
-      if (state.curves.length === 0) return '';
-      return state.curves.map(serializeCurve).join('!');
-    }
-
-    function parseFromURL(str) {
-      if (!str) return [];
-      return str.split('!').filter(s => s).map(parseCurve);
-    }
-
     function updateURLHash() {
-      const serialized = serializeToURL();
+      const serialized = serializeCurves(state.curves);
       if (serialized) {
         window.history.replaceState(null, '', '#' + serialized);
       } else {
@@ -552,7 +475,7 @@
       const hash = window.location.hash.slice(1);
       if (hash) {
         try {
-          const curves = parseFromURL(hash);
+          const curves = parseCurvesFromURL(hash);
           if (curves.length > 0) {
             state.curves = curves;
             return true;
@@ -564,67 +487,22 @@
       return false;
     }
 
-    // Debounce helper
-    function debounce(fn, delay) {
-      let timeoutId = null;
-      return function (...args) {
-        if (timeoutId) clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => {
-          fn.apply(this, args);
-          timeoutId = null;
-        }, delay);
-      };
-    }
-
     const debouncedUpdateURLHash = debounce(updateURLHash, 300);
 
     // ========================================================================
-    // NODE DELETION
+    // NODE DELETION (uses common.js)
     // ========================================================================
 
     function deleteNode(curveIndex, segmentIndex, pointType) {
-      if (pointType !== 'p0' && pointType !== 'p3') return;
-      if (curveIndex < 0 || curveIndex >= state.curves.length) return;
-
-      const curve = state.curves[curveIndex];
-      const numSegments = curve.segments.length;
-      if (numSegments === 0) return;
-
-      if (numSegments === 1) {
-        state.curves.splice(curveIndex, 1);
-        if (state.activeCurveIndex >= state.curves.length) {
-          state.activeCurveIndex = state.curves.length - 1;
-        }
-        return;
-      }
-
-      if (pointType === 'p0' && segmentIndex === 0) {
-        curve.segments.shift();
-        if (curve.continuity.length > 0) curve.continuity.shift();
-        return;
-      }
-
-      if (pointType === 'p3' && segmentIndex === numSegments - 1) {
-        curve.segments.pop();
-        if (curve.continuity.length > 0) curve.continuity.pop();
-        return;
-      }
-
-      let deleteIndex = pointType === 'p3' ? segmentIndex : segmentIndex - 1;
-      const seg1 = curve.segments[deleteIndex];
-      const seg2 = curve.segments[deleteIndex + 1];
-
-      const mergedSegment = {
-        p0: { ...seg1.p0 },
-        p1: { ...seg1.p1 },
-        p2: { ...seg2.p2 },
-        p3: { ...seg2.p3 },
-      };
-
-      curve.segments.splice(deleteIndex, 2, mergedSegment);
-      if (curve.continuity.length > deleteIndex) {
-        curve.continuity.splice(deleteIndex, 1);
-      }
+      const result = deleteNodeFromCurves(
+        state.curves,
+        state.activeCurveIndex,
+        curveIndex,
+        segmentIndex,
+        pointType
+      );
+      state.curves = result.curves;
+      state.activeCurveIndex = result.activeCurveIndex;
     }
 
     // ========================================================================
