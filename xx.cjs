@@ -67,6 +67,8 @@ cat <<EEE
 
 EEE
 
+/bin/bash test.sh
+
 echo -e "\n      Press enter to continue\n"
 read
 

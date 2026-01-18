@@ -216,6 +216,29 @@ describe('debounce', () => {
     const debounced = debounce(() => {}, 100);
     assert.equal(typeof debounced, 'function');
   });
+
+  test('delays function execution', async () => {
+    let callCount = 0;
+    const fn = () => { callCount++; };
+    const debounced = debounce(fn, 50);
+    
+    debounced();
+    debounced();
+    debounced();
+    
+    // Not called yet
+    assert.equal(callCount, 0);
+    
+    // Wait for debounce
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(callCount, 1);
+  });
+
+  test('calling debounced function returns undefined immediately', () => {
+    const debounced = debounce(() => 42, 100);
+    const result = debounced();
+    assert.equal(result, undefined);
+  });
 });
 
 // ============================================================================
@@ -278,4 +301,34 @@ describe('deleteNodeFromCurves', () => {
     const result = deleteNodeFromCurves(curves, 1, 0, 0, 'p0');
     assert.equal(result.activeCurveIndex, -1);
   });
+
+  test('empty curves array returns unchanged', () => {
+    const curves = [];
+    const result = deleteNodeFromCurves(curves, 0, 0, 0, 'p0');
+    assert.deepEqual(result.curves, []);
+    assert.equal(result.activeCurveIndex, 0);
+  });
+
+  test('curve with zero segments returns unchanged', () => {
+    // Edge case: a curve object with empty segments array
+    const curves = [{ segments: [], continuity: [] }];
+    const result = deleteNodeFromCurves(curves, 0, 0, 0, 'p0');
+    assert.equal(result.curves.length, 1);
+    assert.equal(result.curves[0].segments.length, 0);
+  });
+
+  test('invalid curve index returns unchanged', () => {
+    const curves = [makeCurve(2)];
+    const result = deleteNodeFromCurves(curves, 0, 5, 0, 'p0');
+    assert.equal(result.curves.length, 1);
+    assert.equal(result.curves[0].segments.length, 2);
+  });
+
+  test('negative curve index returns unchanged', () => {
+    const curves = [makeCurve(2)];
+    const result = deleteNodeFromCurves(curves, 0, -1, 0, 'p0');
+    assert.equal(result.curves.length, 1);
+    assert.equal(result.curves[0].segments.length, 2);
+  });
 });
+
