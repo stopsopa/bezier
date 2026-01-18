@@ -573,8 +573,8 @@
       ctx.bezierCurveTo(seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y, seg.p3.x, seg.p3.y);
 
       const gradient = ctx.createLinearGradient(seg.p0.x, seg.p0.y, seg.p3.x, seg.p3.y);
-      gradient.addColorStop(0, '#ff6b6b');
-      gradient.addColorStop(1, '#ffa502');
+      gradient.addColorStop(0, '#22c55e');
+      gradient.addColorStop(1, '#16a34a');
 
       ctx.strokeStyle = gradient;
       ctx.lineWidth = 3;
@@ -637,7 +637,7 @@
 
     function drawAnchorPoint(p, isSelected = false) {
       const size = 7;
-      ctx.fillStyle = isSelected ? '#00d9ff' : '#ff6b6b';
+      ctx.fillStyle = isSelected ? '#00d9ff' : '#22c55e';
       ctx.fillRect(p.x - size, p.y - size, size * 2, size * 2);
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
@@ -653,7 +653,7 @@
       let html = '';
       state.curves.forEach((curve, curveIndex) => {
         html += `<div style="margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
-          <div style="color: #ff6b6b; font-weight: bold; margin-bottom: 6px;">Curve ${curveIndex + 1}</div>`;
+          <div style="color: #22c55e; font-weight: bold; margin-bottom: 6px;">Curve ${curveIndex + 1}</div>`;
         curve.segments.forEach((seg, i) => {
           html += `
             <div class="segment-item">
