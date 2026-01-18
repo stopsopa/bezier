@@ -340,10 +340,11 @@
             <g id="points"></g>
           </svg>
           <div class="instructions">
-            <strong>Click</strong> to add points · <strong>Drag</strong> to shape<br />
-            <strong>Click endpoint</strong> → click canvas to extend<br />
-            <strong>Ctrl+Click</strong> node to delete<br />
-            <strong>Space+Drag</strong> to pan canvas
+            <strong>Drag</strong> = move points freely<br />
+            <strong>Ctrl+drag</strong> control point = maintain continuity<br />
+            <strong>Shift+click</strong> = start new independent curve<br />
+            <strong>Click endpoint</strong> then <strong>Ctrl+click</strong> canvas = extend<br />
+            <strong>Ctrl+click</strong> anchor = delete · <strong>Space+drag</strong> = pan
           </div>
         </div>
 
@@ -386,6 +387,10 @@
       // ========================================================================
 
       const state = {
+        // Multiple curves support - each curve is { segments: [], continuity: [] }
+        curves: [],
+        activeCurveIndex: -1, // Which curve is currently selected/being edited
+        // Flat references for backward compatibility
         segments: [], // Array of { p0, p1, p2, p3 }
         continuity: [], // Array of 'independent' | 'c1' | 'c2' per junction
         isDrawing: false,
@@ -394,6 +399,9 @@
         selectedJunction: null, // Index of selected junction
         // New state for enhancements
         activeEndpoint: null, // 'start' | 'end' | null - which end is selected for extension
+        potentialEndpointSelect: null, // Track potential endpoint selection for click vs drag
+        didDrag: false, // Track if mouse moved during drag
+        dragStartPos: null, // Starting position to detect drag vs click
         isPanning: false,
         panStart: null, // { x, y } - starting position for pan
         viewBox: { x: 0, y: 0, width: 0, height: 0 },
@@ -692,6 +700,27 @@
         }
       }
 
+      // Apply control point continuity when Ctrl+dragging
+      // This mirrors the control point across the shared anchor
+      function applyControlPointContinuity(segmentIndex, pointType, pos) {
+        // p1 is outgoing control from p0 (shared with previous segment's p3)
+        // p2 is incoming control to p3 (shared with next segment's p0)
+        if (pointType === 'p1' && segmentIndex > 0) {
+          // Mirror p1 movement to previous segment's p2
+          const seg = state.segments[segmentIndex];
+          const anchor = seg.p0; // This is also previous segment's p3
+          const offset = subtractPoints(pos, anchor);
+          state.segments[segmentIndex - 1].p2 = subtractPoints(anchor, offset);
+        }
+        if (pointType === 'p2' && segmentIndex < state.segments.length - 1) {
+          // Mirror p2 movement to next segment's p1
+          const seg = state.segments[segmentIndex];
+          const anchor = seg.p3; // This is also next segment's p0
+          const offset = subtractPoints(pos, anchor);
+          state.segments[segmentIndex + 1].p1 = subtractPoints(anchor, offset);
+        }
+      }
+
       // ========================================================================
       // INTERACTION HANDLERS
       // ========================================================================
@@ -699,6 +728,10 @@
       function handleMouseDown(e) {
         const target = e.target;
         const pos = getMousePosition(e);
+
+        // Reset drag tracking
+        state.didDrag = false;
+        state.dragStartPos = { ...pos };
 
         // Handle panning with space+drag or middle mouse button
         if (state.spacePressed || e.button === 1) {
@@ -717,8 +750,8 @@
           const segIndex = parseInt(target.dataset.segment);
           const pointType = target.dataset.point;
 
-          // Ctrl+Click = delete node
-          if (e.ctrlKey || e.metaKey) {
+          // Ctrl+Click on anchor = delete node
+          if ((e.ctrlKey || e.metaKey) && target.classList.contains("anchor-point")) {
             deleteNode(segIndex, pointType);
             state.activeEndpoint = null;
             render();
@@ -729,27 +762,28 @@
           const isFirstAnchor = pointType === 'p0' && segIndex === 0;
           const isLastAnchor = pointType === 'p3' && segIndex === state.segments.length - 1;
 
-          if (target.classList.contains("anchor-point") && (isFirstAnchor || isLastAnchor)) {
-            // Toggle endpoint selection
-            const clickedEndpoint = isFirstAnchor ? 'start' : 'end';
-            if (state.activeEndpoint === clickedEndpoint) {
-              state.activeEndpoint = null; // Deselect if clicking same endpoint
-            } else {
-              state.activeEndpoint = clickedEndpoint;
-            }
-            render();
-            return;
-          }
-
-          // Start dragging (not on endpoints that were just selected)
+          // Start dragging - ALL points can be dragged including endpoints
           state.dragTarget = { segmentIndex: segIndex, pointType };
-          state.activeEndpoint = null;
+          
+          // Track potential endpoint selection (will confirm on mouseUp if no drag)
+          if (target.classList.contains("anchor-point") && (isFirstAnchor || isLastAnchor)) {
+            state.potentialEndpointSelect = {
+              segIndex,
+              pointType,
+              isFirst: isFirstAnchor,
+            };
+          } else {
+            state.potentialEndpointSelect = null;
+          }
+          
+          state.activeEndpoint = null; // Clear selection when starting to interact
           return;
         }
 
         // Clicking on canvas (not on a point)
-        // Clear endpoint selection and start new segment
-        if (state.activeEndpoint && state.segments.length > 0) {
+        
+        // Ctrl+click on canvas = extend from selected endpoint
+        if ((e.ctrlKey || e.metaKey) && state.activeEndpoint && state.segments.length > 0) {
           // Extend from the selected endpoint
           if (state.activeEndpoint === 'start') {
             // Add segment at the beginning
@@ -761,10 +795,10 @@
               p3: { ...existingStart },
             };
             state.segments.unshift(newSegment);
-            // Add continuity for the new junction
-            state.continuity.unshift(continuitySelect.value);
+            // Add continuity for the new junction (independent by default)
+            state.continuity.unshift('independent');
           } else {
-            // Add segment at the end (normal behavior)
+            // Add segment at the end
             const existingEnd = state.segments[state.segments.length - 1].p3;
             const newSegment = {
               p0: { ...existingEnd },
@@ -774,16 +808,30 @@
             };
             state.segments.push(newSegment);
             if (state.segments.length > 1) {
-              state.continuity.push(continuitySelect.value);
+              state.continuity.push('independent');
             }
           }
           state.activeEndpoint = null;
-          applyAllContinuity();
+          // Don't apply continuity - user controls this with Ctrl+drag
           render();
           return;
         }
 
-        // Start drawing new segment (original behavior)
+        // Shift+click = start a completely new independent curve
+        if (e.shiftKey) {
+          state.currentSegment = {
+            p0: { ...pos },
+            p1: { ...pos },
+            p2: { ...pos },
+            p3: { ...pos },
+          };
+          state.isDrawing = true;
+          state.activeEndpoint = null;
+          render();
+          return;
+        }
+
+        // Regular click = start drawing new segment continuing from last point
         if (!state.isDrawing) {
           const startPoint =
             state.segments.length > 0
@@ -833,6 +881,12 @@
           const { segmentIndex, pointType } = state.dragTarget;
           const seg = state.segments[segmentIndex];
 
+          // Track that we actually moved (for click vs drag detection)
+          const dragDist = distance(pos, state.dragStartPos);
+          if (dragDist > 3) {
+            state.didDrag = true;
+          }
+
           // For anchor points that are shared between segments
           if (pointType === "p0" && segmentIndex > 0) {
             // Also update previous segment's p3
@@ -845,19 +899,13 @@
 
           seg[pointType] = { ...pos };
 
-          // When moving control points, apply continuity to affected junctions
-          if (pointType === "p2" && segmentIndex < state.continuity.length) {
-            applyContinuity(segmentIndex);
-          }
-          if (pointType === "p1" && segmentIndex > 0) {
-            // Moving p1 might affect the previous junction if it's C²
-            // but we keep the current segment's p1 as the user wants
+          // Only apply continuity when Ctrl is held (explicit control)
+          if ((e.ctrlKey || e.metaKey) && (pointType === "p1" || pointType === "p2")) {
+            applyControlPointContinuity(segmentIndex, pointType, pos);
           }
 
-          // When moving anchor points, reapply continuity
-          if (pointType === "p0" || pointType === "p3") {
-            applyAllContinuity();
-          }
+          // Don't auto-apply continuity when moving anchor points anymore
+          // User has explicit control via Ctrl+drag on control points
 
           render();
           return;
@@ -890,26 +938,32 @@
         }
 
         if (state.dragTarget) {
+          // If we didn't drag much and it was an endpoint, select it
+          if (state.potentialEndpointSelect && !state.didDrag) {
+            const { isFirst } = state.potentialEndpointSelect;
+            const clickedEndpoint = isFirst ? 'start' : 'end';
+            // Toggle selection
+            state.activeEndpoint = state.activeEndpoint === clickedEndpoint ? null : clickedEndpoint;
+            render();
+          }
+          
           state.dragTarget = null;
+          state.potentialEndpointSelect = null;
+          state.didDrag = false;
+          state.dragStartPos = null;
           return;
         }
 
         // Finish placing current segment
         if (state.isDrawing && state.currentSegment) {
-          // Apply default continuity from selector
-          const defaultMode = continuitySelect.value;
-
+          // New segments are independent by default - user controls continuity explicitly
           if (state.segments.length > 0) {
-            state.continuity.push(defaultMode);
+            state.continuity.push('independent');
           }
 
           state.segments.push(state.currentSegment);
 
-          // Apply continuity for the new junction
-          if (state.segments.length > 1) {
-            applyContinuity(state.continuity.length - 1);
-          }
-
+          // Don't auto-apply continuity - user has explicit control
           state.currentSegment = null;
           state.isDrawing = false;
 
@@ -927,10 +981,15 @@
       function handleClear() {
         state.segments = [];
         state.continuity = [];
+        state.curves = [];
+        state.activeCurveIndex = -1;
         state.isDrawing = false;
         state.currentSegment = null;
         state.dragTarget = null;
         state.activeEndpoint = null;
+        state.potentialEndpointSelect = null;
+        state.didDrag = false;
+        state.dragStartPos = null;
         state.isPanning = false;
         state.panStart = null;
         render();
