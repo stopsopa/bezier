@@ -387,84 +387,93 @@
       // ========================================================================
 
       const state = {
-        // Multiple curves support - each curve is { segments: [], continuity: [] }
+        // Multiple independent curves - each curve is { segments: [], continuity: [] }
         curves: [],
         activeCurveIndex: -1, // Which curve is currently selected/being edited
-        // Flat references for backward compatibility
-        segments: [], // Array of { p0, p1, p2, p3 }
-        continuity: [], // Array of 'independent' | 'c1' | 'c2' per junction
+        // Drawing state
         isDrawing: false,
         currentSegment: null, // Segment being drawn
-        dragTarget: null, // { segmentIndex, pointType: 'p0'|'p1'|'p2'|'p3' }
-        selectedJunction: null, // Index of selected junction
-        // New state for enhancements
-        activeEndpoint: null, // 'start' | 'end' | null - which end is selected for extension
+        currentCurveIndex: -1, // Which curve we're adding to during drawing
+        // Interaction state
+        dragTarget: null, // { curveIndex, segmentIndex, pointType: 'p0'|'p1'|'p2'|'p3' }
+        activeEndpoint: null, // { curveIndex, end: 'start' | 'end' } - which endpoint is selected
         potentialEndpointSelect: null, // Track potential endpoint selection for click vs drag
         didDrag: false, // Track if mouse moved during drag
         dragStartPos: null, // Starting position to detect drag vs click
+        // Panning
         isPanning: false,
         panStart: null, // { x, y } - starting position for pan
-        viewBox: { x: 0, y: 0, width: 0, height: 0 },
         spacePressed: false, // Track if space is held for panning
       };
+
+      // Helper to get active curve's segments
+      function getActiveSegments() {
+        if (state.activeCurveIndex >= 0 && state.activeCurveIndex < state.curves.length) {
+          return state.curves[state.activeCurveIndex].segments;
+        }
+        return [];
+      }
+
+      // Helper to get active curve's continuity array
+      function getActiveContinuity() {
+        if (state.activeCurveIndex >= 0 && state.activeCurveIndex < state.curves.length) {
+          return state.curves[state.activeCurveIndex].continuity;
+        }
+        return [];
+      }
 
       // ========================================================================
       // NODE DELETION
       // ========================================================================
 
-      function deleteNode(segmentIndex, pointType) {
+      function deleteNode(curveIndex, segmentIndex, pointType) {
         // Only anchor points (p0, p3) can be deleted
         if (pointType !== 'p0' && pointType !== 'p3') return;
+        if (curveIndex < 0 || curveIndex >= state.curves.length) return;
 
-        const numSegments = state.segments.length;
+        const curve = state.curves[curveIndex];
+        const numSegments = curve.segments.length;
         if (numSegments === 0) return;
 
-        // Determine which anchor is being deleted
-        // p0 of segment 0 = first anchor
-        // p3 of last segment = last anchor
-        // p3 of segment i (where i < numSegments-1) = middle anchor (shared with p0 of segment i+1)
-        // p0 of segment i (where i > 0) = middle anchor (shared with p3 of segment i-1)
-
         if (numSegments === 1) {
-          // Only one segment - delete it entirely
-          state.segments = [];
-          state.continuity = [];
+          // Only one segment in curve - delete entire curve
+          state.curves.splice(curveIndex, 1);
+          // Adjust activeCurveIndex if needed
+          if (state.activeCurveIndex >= state.curves.length) {
+            state.activeCurveIndex = state.curves.length - 1;
+          }
           return;
         }
 
         if (pointType === 'p0' && segmentIndex === 0) {
           // Deleting FIRST anchor - remove first segment
-          state.segments.shift();
-          if (state.continuity.length > 0) {
-            state.continuity.shift();
+          curve.segments.shift();
+          if (curve.continuity.length > 0) {
+            curve.continuity.shift();
           }
           return;
         }
 
         if (pointType === 'p3' && segmentIndex === numSegments - 1) {
           // Deleting LAST anchor - remove last segment
-          state.segments.pop();
-          if (state.continuity.length > 0) {
-            state.continuity.pop();
+          curve.segments.pop();
+          if (curve.continuity.length > 0) {
+            curve.continuity.pop();
           }
           return;
         }
 
         // Deleting a MIDDLE anchor - merge two adjacent segments
-        // The anchor at segmentIndex.p3 is also segmentIndex+1.p0
         let deleteIndex;
         if (pointType === 'p3') {
           deleteIndex = segmentIndex;
         } else {
-          // pointType === 'p0' and segmentIndex > 0
           deleteIndex = segmentIndex - 1;
         }
 
-        // Merge segment[deleteIndex] and segment[deleteIndex + 1]
-        const seg1 = state.segments[deleteIndex];
-        const seg2 = state.segments[deleteIndex + 1];
+        const seg1 = curve.segments[deleteIndex];
+        const seg2 = curve.segments[deleteIndex + 1];
 
-        // Create merged segment: keep p0, p1 from seg1 and p2, p3 from seg2
         const mergedSegment = {
           p0: { ...seg1.p0 },
           p1: { ...seg1.p1 },
@@ -472,12 +481,9 @@
           p3: { ...seg2.p3 },
         };
 
-        // Replace seg1 with merged, remove seg2
-        state.segments.splice(deleteIndex, 2, mergedSegment);
-
-        // Remove one continuity entry (there's one less junction now)
-        if (state.continuity.length > deleteIndex) {
-          state.continuity.splice(deleteIndex, 1);
+        curve.segments.splice(deleteIndex, 2, mergedSegment);
+        if (curve.continuity.length > deleteIndex) {
+          curve.continuity.splice(deleteIndex, 1);
         }
       }
 
@@ -521,20 +527,22 @@
         handlesGroup.innerHTML = "";
         pointsGroup.innerHTML = "";
 
-        // Draw completed segments
-        state.segments.forEach((seg, i) => {
-          drawSegment(seg, i);
+        // Draw all curves
+        state.curves.forEach((curve, curveIndex) => {
+          curve.segments.forEach((seg, segIndex) => {
+            drawSegment(seg, curveIndex, segIndex, curve.segments.length);
+          });
         });
 
         // Draw current segment being drawn
         if (state.currentSegment) {
-          drawSegment(state.currentSegment, state.segments.length, true);
+          drawSegment(state.currentSegment, state.currentCurveIndex, -1, 0, true);
         }
 
         updateSegmentList();
       }
 
-      function drawSegment(seg, index, isCurrentlyDrawing = false) {
+      function drawSegment(seg, curveIndex, segIndex, totalSegments, isCurrentlyDrawing = false) {
         // Draw curve path
         const pathData = `M ${seg.p0.x} ${seg.p0.y} C ${seg.p1.x} ${seg.p1.y}, ${seg.p2.x} ${seg.p2.y}, ${seg.p3.x} ${seg.p3.y}`;
         const path = createSvgElement("path", {
@@ -572,7 +580,8 @@
           cy: seg.p1.y,
           r: 6,
           class: "control-point",
-          "data-segment": index,
+          "data-curve": curveIndex,
+          "data-segment": segIndex,
           "data-point": "p1",
         });
         pointsGroup.appendChild(cp1);
@@ -582,142 +591,105 @@
           cy: seg.p2.y,
           r: 6,
           class: "control-point",
-          "data-segment": index,
+          "data-curve": curveIndex,
+          "data-segment": segIndex,
           "data-point": "p2",
         });
         pointsGroup.appendChild(cp2);
 
         // Draw anchor points (rectangles)
-        // Only draw p0 for first segment or if not continuing from previous
-        if (index === 0 || isCurrentlyDrawing) {
-          const isStartSelected = state.activeEndpoint === 'start' && index === 0 && !isCurrentlyDrawing;
+        // Only draw p0 for first segment of a curve or when drawing
+        if (segIndex === 0 || isCurrentlyDrawing) {
+          const isStartSelected = state.activeEndpoint && 
+            state.activeEndpoint.curveIndex === curveIndex && 
+            state.activeEndpoint.end === 'start' && 
+            segIndex === 0 && 
+            !isCurrentlyDrawing;
           const anchor0 = createSvgElement("rect", {
             x: seg.p0.x - 6,
             y: seg.p0.y - 6,
             width: 12,
             height: 12,
             class: "anchor-point" + (isStartSelected ? " endpoint-selected" : ""),
-            "data-segment": index,
+            "data-curve": curveIndex,
+            "data-segment": segIndex,
             "data-point": "p0",
           });
           pointsGroup.appendChild(anchor0);
         }
 
         // Always draw p3
-        const isEndSelected = state.activeEndpoint === 'end' && index === state.segments.length - 1 && !isCurrentlyDrawing;
+        const isEndSelected = state.activeEndpoint && 
+          state.activeEndpoint.curveIndex === curveIndex && 
+          state.activeEndpoint.end === 'end' && 
+          segIndex === totalSegments - 1 && 
+          !isCurrentlyDrawing;
         const anchor3 = createSvgElement("rect", {
           x: seg.p3.x - 6,
           y: seg.p3.y - 6,
           width: 12,
           height: 12,
           class: "anchor-point" + (isEndSelected ? " endpoint-selected" : ""),
-          "data-segment": index,
+          "data-curve": curveIndex,
+          "data-segment": segIndex,
           "data-point": "p3",
         });
         pointsGroup.appendChild(anchor3);
       }
 
       function updateSegmentList() {
-        if (state.segments.length === 0) {
+        if (state.curves.length === 0) {
           segmentList.innerHTML =
             '<div style="color: #666; font-size: 0.8rem;">No segments yet. Click to start drawing!</div>';
           return;
         }
 
-        segmentList.innerHTML = state.segments
-          .map((seg, i) => {
-            const junctionMode = i > 0 ? state.continuity[i - 1] : null;
-            return `
-          <div class="segment-item">
-            <div><strong>Segment ${i + 1}</strong></div>
-            <div style="color: #888;">P₀: (${Math.round(seg.p0.x)}, ${Math.round(seg.p0.y)})</div>
-            <div style="color: #888;">P₃: (${Math.round(seg.p3.x)}, ${Math.round(seg.p3.y)})</div>
-            ${
-              i > 0
-                ? `
-              <div class="junction-controls">
-                <span style="color: #666; font-size: 0.7rem;">Junction:</span>
-                <button class="junction-btn ${junctionMode === "independent" ? "active" : ""}" 
-                        data-junction="${i - 1}" data-mode="independent">Indep</button>
-                <button class="junction-btn ${junctionMode === "c1" ? "active" : ""}" 
-                        data-junction="${i - 1}" data-mode="c1">C¹</button>
-                <button class="junction-btn ${junctionMode === "c2" ? "active" : ""}" 
-                        data-junction="${i - 1}" data-mode="c2">C²</button>
+        let html = '';
+        state.curves.forEach((curve, curveIndex) => {
+          html += `<div style="margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
+            <div style="color: #00d9ff; font-weight: bold; margin-bottom: 6px;">Curve ${curveIndex + 1}</div>`;
+          
+          curve.segments.forEach((seg, i) => {
+            const junctionMode = i > 0 ? curve.continuity[i - 1] : null;
+            html += `
+              <div class="segment-item">
+                <div><strong>Seg ${i + 1}</strong></div>
+                <div style="color: #888;">P₀: (${Math.round(seg.p0.x)}, ${Math.round(seg.p0.y)})</div>
+                <div style="color: #888;">P₃: (${Math.round(seg.p3.x)}, ${Math.round(seg.p3.y)})</div>
               </div>
-            `
-                : ""
-            }
-          </div>
-        `;
-          })
-          .join("");
-
-        // Add junction button listeners
-        segmentList.querySelectorAll(".junction-btn").forEach((btn) => {
-          btn.addEventListener("click", (e) => {
-            const junctionIndex = parseInt(e.target.dataset.junction);
-            const mode = e.target.dataset.mode;
-            setJunctionContinuity(junctionIndex, mode);
+            `;
           });
+          html += '</div>';
         });
+
+        segmentList.innerHTML = html;
       }
 
       // ========================================================================
       // CONTINUITY ENFORCEMENT
       // ========================================================================
 
-      function setJunctionContinuity(junctionIndex, mode) {
-        state.continuity[junctionIndex] = mode;
-        applyContinuity(junctionIndex);
-        render();
-      }
-
-      function applyContinuity(junctionIndex) {
-        const mode = state.continuity[junctionIndex];
-        const prevSeg = state.segments[junctionIndex];
-        const nextSeg = state.segments[junctionIndex + 1];
-
-        if (!prevSeg || !nextSeg) return;
-
-        let updated;
-        switch (mode) {
-          case "c1":
-            updated = enforceC1(prevSeg, nextSeg);
-            break;
-          case "c2":
-            updated = enforceC2(prevSeg, nextSeg);
-            break;
-          default:
-            updated = enforceC0(prevSeg, nextSeg);
-        }
-
-        state.segments[junctionIndex + 1] = updated;
-      }
-
-      function applyAllContinuity() {
-        for (let i = 0; i < state.continuity.length; i++) {
-          applyContinuity(i);
-        }
-      }
-
       // Apply control point continuity when Ctrl+dragging
       // This mirrors the control point across the shared anchor
-      function applyControlPointContinuity(segmentIndex, pointType, pos) {
+      function applyControlPointContinuity(curveIndex, segmentIndex, pointType, pos) {
+        if (curveIndex < 0 || curveIndex >= state.curves.length) return;
+        const curve = state.curves[curveIndex];
+        
         // p1 is outgoing control from p0 (shared with previous segment's p3)
         // p2 is incoming control to p3 (shared with next segment's p0)
         if (pointType === 'p1' && segmentIndex > 0) {
           // Mirror p1 movement to previous segment's p2
-          const seg = state.segments[segmentIndex];
+          const seg = curve.segments[segmentIndex];
           const anchor = seg.p0; // This is also previous segment's p3
           const offset = subtractPoints(pos, anchor);
-          state.segments[segmentIndex - 1].p2 = subtractPoints(anchor, offset);
+          curve.segments[segmentIndex - 1].p2 = subtractPoints(anchor, offset);
         }
-        if (pointType === 'p2' && segmentIndex < state.segments.length - 1) {
+        if (pointType === 'p2' && segmentIndex < curve.segments.length - 1) {
           // Mirror p2 movement to next segment's p1
-          const seg = state.segments[segmentIndex];
+          const seg = curve.segments[segmentIndex];
           const anchor = seg.p3; // This is also next segment's p0
           const offset = subtractPoints(pos, anchor);
-          state.segments[segmentIndex + 1].p1 = subtractPoints(anchor, offset);
+          curve.segments[segmentIndex + 1].p1 = subtractPoints(anchor, offset);
         }
       }
 
@@ -747,27 +719,35 @@
           target.classList.contains("anchor-point") ||
           target.classList.contains("control-point")
         ) {
+          const curveIndex = parseInt(target.dataset.curve);
           const segIndex = parseInt(target.dataset.segment);
           const pointType = target.dataset.point;
+          
+          if (isNaN(curveIndex) || curveIndex < 0 || curveIndex >= state.curves.length) {
+            return; // Invalid curve
+          }
+          
+          const curve = state.curves[curveIndex];
 
           // Ctrl+Click on anchor = delete node
           if ((e.ctrlKey || e.metaKey) && target.classList.contains("anchor-point")) {
-            deleteNode(segIndex, pointType);
+            deleteNode(curveIndex, segIndex, pointType);
             state.activeEndpoint = null;
             render();
             return;
           }
 
-          // Check if clicking on an endpoint (first or last anchor)
+          // Check if clicking on an endpoint (first or last anchor of this curve)
           const isFirstAnchor = pointType === 'p0' && segIndex === 0;
-          const isLastAnchor = pointType === 'p3' && segIndex === state.segments.length - 1;
+          const isLastAnchor = pointType === 'p3' && segIndex === curve.segments.length - 1;
 
           // Start dragging - ALL points can be dragged including endpoints
-          state.dragTarget = { segmentIndex: segIndex, pointType };
+          state.dragTarget = { curveIndex, segmentIndex: segIndex, pointType };
           
           // Track potential endpoint selection (will confirm on mouseUp if no drag)
           if (target.classList.contains("anchor-point") && (isFirstAnchor || isLastAnchor)) {
             state.potentialEndpointSelect = {
+              curveIndex,
               segIndex,
               pointType,
               isFirst: isFirstAnchor,
@@ -783,42 +763,49 @@
         // Clicking on canvas (not on a point)
         
         // Ctrl+click on canvas = extend from selected endpoint
-        if ((e.ctrlKey || e.metaKey) && state.activeEndpoint && state.segments.length > 0) {
-          // Extend from the selected endpoint
-          if (state.activeEndpoint === 'start') {
-            // Add segment at the beginning
-            const existingStart = state.segments[0].p0;
-            const newSegment = {
-              p0: { ...pos },
-              p1: { ...pos },
-              p2: { ...existingStart },
-              p3: { ...existingStart },
-            };
-            state.segments.unshift(newSegment);
-            // Add continuity for the new junction (independent by default)
-            state.continuity.unshift('independent');
-          } else {
-            // Add segment at the end
-            const existingEnd = state.segments[state.segments.length - 1].p3;
-            const newSegment = {
-              p0: { ...existingEnd },
-              p1: { ...existingEnd },
-              p2: { ...pos },
-              p3: { ...pos },
-            };
-            state.segments.push(newSegment);
-            if (state.segments.length > 1) {
-              state.continuity.push('independent');
+        if ((e.ctrlKey || e.metaKey) && state.activeEndpoint) {
+          const { curveIndex, end } = state.activeEndpoint;
+          if (curveIndex >= 0 && curveIndex < state.curves.length) {
+            const curve = state.curves[curveIndex];
+            
+            if (end === 'start') {
+              // Add segment at the beginning of this curve
+              const existingStart = curve.segments[0].p0;
+              const newSegment = {
+                p0: { ...pos },
+                p1: { ...pos },
+                p2: { ...existingStart },
+                p3: { ...existingStart },
+              };
+              curve.segments.unshift(newSegment);
+              curve.continuity.unshift('independent');
+            } else {
+              // Add segment at the end of this curve
+              const existingEnd = curve.segments[curve.segments.length - 1].p3;
+              const newSegment = {
+                p0: { ...existingEnd },
+                p1: { ...existingEnd },
+                p2: { ...pos },
+                p3: { ...pos },
+              };
+              curve.segments.push(newSegment);
+              if (curve.segments.length > 1) {
+                curve.continuity.push('independent');
+              }
             }
+            state.activeEndpoint = null;
+            render();
+            return;
           }
-          state.activeEndpoint = null;
-          // Don't apply continuity - user controls this with Ctrl+drag
-          render();
-          return;
         }
 
-        // Shift+click = start a completely new independent curve
+        // Shift+click = start a completely new independent curve (or start first curve)
         if (e.shiftKey) {
+          // Create a new curve
+          const newCurveIndex = state.curves.length;
+          state.curves.push({ segments: [], continuity: [] });
+          state.currentCurveIndex = newCurveIndex;
+          
           state.currentSegment = {
             p0: { ...pos },
             p1: { ...pos },
@@ -831,23 +818,9 @@
           return;
         }
 
-        // Regular click = start drawing new segment continuing from last point
-        if (!state.isDrawing) {
-          const startPoint =
-            state.segments.length > 0
-              ? { ...state.segments[state.segments.length - 1].p3 }
-              : pos;
-
-          state.currentSegment = {
-            p0: startPoint,
-            p1: { ...startPoint },
-            p2: { ...pos },
-            p3: { ...pos },
-          };
-          state.isDrawing = true;
-          state.activeEndpoint = null;
-        }
-
+        // Regular click on canvas (no modifiers) = just clear endpoint selection
+        // (points should only be created via Shift+click for new curves, or Ctrl+click to extend)
+        state.activeEndpoint = null;
         render();
       }
 
@@ -857,16 +830,18 @@
           const dx = e.clientX - state.panStart.x;
           const dy = e.clientY - state.panStart.y;
           
-          // Move all points
-          state.segments.forEach(seg => {
-            seg.p0.x += dx;
-            seg.p0.y += dy;
-            seg.p1.x += dx;
-            seg.p1.y += dy;
-            seg.p2.x += dx;
-            seg.p2.y += dy;
-            seg.p3.x += dx;
-            seg.p3.y += dy;
+          // Move all points in all curves
+          state.curves.forEach(curve => {
+            curve.segments.forEach(seg => {
+              seg.p0.x += dx;
+              seg.p0.y += dy;
+              seg.p1.x += dx;
+              seg.p1.y += dy;
+              seg.p2.x += dx;
+              seg.p2.y += dy;
+              seg.p3.x += dx;
+              seg.p3.y += dy;
+            });
           });
           
           state.panStart = { x: e.clientX, y: e.clientY };
@@ -878,8 +853,20 @@
 
         // Handle dragging
         if (state.dragTarget) {
-          const { segmentIndex, pointType } = state.dragTarget;
-          const seg = state.segments[segmentIndex];
+          const { curveIndex, segmentIndex, pointType } = state.dragTarget;
+          
+          if (curveIndex < 0 || curveIndex >= state.curves.length) {
+            state.dragTarget = null;
+            return;
+          }
+          
+          const curve = state.curves[curveIndex];
+          const seg = curve.segments[segmentIndex];
+          
+          if (!seg) {
+            state.dragTarget = null;
+            return;
+          }
 
           // Track that we actually moved (for click vs drag detection)
           const dragDist = distance(pos, state.dragStartPos);
@@ -887,25 +874,22 @@
             state.didDrag = true;
           }
 
-          // For anchor points that are shared between segments
+          // For anchor points that are shared between segments WITHIN THE SAME CURVE
           if (pointType === "p0" && segmentIndex > 0) {
             // Also update previous segment's p3
-            state.segments[segmentIndex - 1].p3 = { ...pos };
+            curve.segments[segmentIndex - 1].p3 = { ...pos };
           }
-          if (pointType === "p3" && segmentIndex < state.segments.length - 1) {
+          if (pointType === "p3" && segmentIndex < curve.segments.length - 1) {
             // Also update next segment's p0
-            state.segments[segmentIndex + 1].p0 = { ...pos };
+            curve.segments[segmentIndex + 1].p0 = { ...pos };
           }
 
           seg[pointType] = { ...pos };
 
           // Only apply continuity when Ctrl is held (explicit control)
           if ((e.ctrlKey || e.metaKey) && (pointType === "p1" || pointType === "p2")) {
-            applyControlPointContinuity(segmentIndex, pointType, pos);
+            applyControlPointContinuity(curveIndex, segmentIndex, pointType, pos);
           }
-
-          // Don't auto-apply continuity when moving anchor points anymore
-          // User has explicit control via Ctrl+drag on control points
 
           render();
           return;
@@ -940,10 +924,17 @@
         if (state.dragTarget) {
           // If we didn't drag much and it was an endpoint, select it
           if (state.potentialEndpointSelect && !state.didDrag) {
-            const { isFirst } = state.potentialEndpointSelect;
-            const clickedEndpoint = isFirst ? 'start' : 'end';
+            const { curveIndex, isFirst } = state.potentialEndpointSelect;
+            const clickedEndpoint = { curveIndex, end: isFirst ? 'start' : 'end' };
+            
             // Toggle selection
-            state.activeEndpoint = state.activeEndpoint === clickedEndpoint ? null : clickedEndpoint;
+            if (state.activeEndpoint && 
+                state.activeEndpoint.curveIndex === clickedEndpoint.curveIndex && 
+                state.activeEndpoint.end === clickedEndpoint.end) {
+              state.activeEndpoint = null;
+            } else {
+              state.activeEndpoint = clickedEndpoint;
+            }
             render();
           }
           
@@ -956,14 +947,19 @@
 
         // Finish placing current segment
         if (state.isDrawing && state.currentSegment) {
-          // New segments are independent by default - user controls continuity explicitly
-          if (state.segments.length > 0) {
-            state.continuity.push('independent');
+          const curveIndex = state.currentCurveIndex;
+          
+          if (curveIndex >= 0 && curveIndex < state.curves.length) {
+            const curve = state.curves[curveIndex];
+            
+            // New segments are independent by default
+            if (curve.segments.length > 0) {
+              curve.continuity.push('independent');
+            }
+
+            curve.segments.push(state.currentSegment);
           }
 
-          state.segments.push(state.currentSegment);
-
-          // Don't auto-apply continuity - user has explicit control
           state.currentSegment = null;
           state.isDrawing = false;
 
@@ -979,12 +975,11 @@
       }
 
       function handleClear() {
-        state.segments = [];
-        state.continuity = [];
         state.curves = [];
         state.activeCurveIndex = -1;
         state.isDrawing = false;
         state.currentSegment = null;
+        state.currentCurveIndex = -1;
         state.dragTarget = null;
         state.activeEndpoint = null;
         state.potentialEndpointSelect = null;
@@ -997,8 +992,7 @@
 
       function handleExport() {
         const data = {
-          segments: state.segments,
-          continuity: state.continuity,
+          curves: state.curves,
         };
         const json = JSON.stringify(data, null, 2);
 
