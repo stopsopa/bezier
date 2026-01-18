@@ -662,3 +662,11 @@ Since this is a visual, interactive application, verification is primarily manua
 2. **Control point size**: Default 8px for anchors, 6px for handles—acceptable?
 3. **Touch support**: Should we include touch event handlers for mobile?
 4. **Undo/Redo**: Is this required for initial version?
+
+# Dev note
+
+for testing use server http://0.0.0.0:4385.
+
+you can make sure about port in .env file.
+
+Assume it is running. I will make sure it will run
