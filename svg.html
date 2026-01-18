@@ -270,6 +270,18 @@
         transform: scale(1.3);
       }
 
+      .anchor-point.endpoint-selected {
+        fill: #ff9500;
+        stroke: #fff;
+        stroke-width: 3;
+        animation: pulse 1s ease-in-out infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
+
       .point-label {
         font-size: 10px;
         fill: #888;
@@ -328,10 +340,10 @@
             <g id="points"></g>
           </svg>
           <div class="instructions">
-            <strong>Click</strong> to add anchor points<br />
-            <strong>Drag</strong> from anchor to set handles<br />
-            <strong>Drag</strong> any point to edit<br />
-            <strong>Double-click</strong> to finish path
+            <strong>Click</strong> to add points · <strong>Drag</strong> to shape<br />
+            <strong>Click endpoint</strong> → click canvas to extend<br />
+            <strong>Ctrl+Click</strong> node to delete<br />
+            <strong>Space+Drag</strong> to pan canvas
           </div>
         </div>
 
@@ -380,7 +392,86 @@
         currentSegment: null, // Segment being drawn
         dragTarget: null, // { segmentIndex, pointType: 'p0'|'p1'|'p2'|'p3' }
         selectedJunction: null, // Index of selected junction
+        // New state for enhancements
+        activeEndpoint: null, // 'start' | 'end' | null - which end is selected for extension
+        isPanning: false,
+        panStart: null, // { x, y } - starting position for pan
+        viewBox: { x: 0, y: 0, width: 0, height: 0 },
+        spacePressed: false, // Track if space is held for panning
       };
+
+      // ========================================================================
+      // NODE DELETION
+      // ========================================================================
+
+      function deleteNode(segmentIndex, pointType) {
+        // Only anchor points (p0, p3) can be deleted
+        if (pointType !== 'p0' && pointType !== 'p3') return;
+
+        const numSegments = state.segments.length;
+        if (numSegments === 0) return;
+
+        // Determine which anchor is being deleted
+        // p0 of segment 0 = first anchor
+        // p3 of last segment = last anchor
+        // p3 of segment i (where i < numSegments-1) = middle anchor (shared with p0 of segment i+1)
+        // p0 of segment i (where i > 0) = middle anchor (shared with p3 of segment i-1)
+
+        if (numSegments === 1) {
+          // Only one segment - delete it entirely
+          state.segments = [];
+          state.continuity = [];
+          return;
+        }
+
+        if (pointType === 'p0' && segmentIndex === 0) {
+          // Deleting FIRST anchor - remove first segment
+          state.segments.shift();
+          if (state.continuity.length > 0) {
+            state.continuity.shift();
+          }
+          return;
+        }
+
+        if (pointType === 'p3' && segmentIndex === numSegments - 1) {
+          // Deleting LAST anchor - remove last segment
+          state.segments.pop();
+          if (state.continuity.length > 0) {
+            state.continuity.pop();
+          }
+          return;
+        }
+
+        // Deleting a MIDDLE anchor - merge two adjacent segments
+        // The anchor at segmentIndex.p3 is also segmentIndex+1.p0
+        let deleteIndex;
+        if (pointType === 'p3') {
+          deleteIndex = segmentIndex;
+        } else {
+          // pointType === 'p0' and segmentIndex > 0
+          deleteIndex = segmentIndex - 1;
+        }
+
+        // Merge segment[deleteIndex] and segment[deleteIndex + 1]
+        const seg1 = state.segments[deleteIndex];
+        const seg2 = state.segments[deleteIndex + 1];
+
+        // Create merged segment: keep p0, p1 from seg1 and p2, p3 from seg2
+        const mergedSegment = {
+          p0: { ...seg1.p0 },
+          p1: { ...seg1.p1 },
+          p2: { ...seg2.p2 },
+          p3: { ...seg2.p3 },
+        };
+
+        // Replace seg1 with merged, remove seg2
+        state.segments.splice(deleteIndex, 2, mergedSegment);
+
+        // Remove one continuity entry (there's one less junction now)
+        if (state.continuity.length > deleteIndex) {
+          state.continuity.splice(deleteIndex, 1);
+        }
+      }
 
       // ========================================================================
       // DOM REFERENCES
@@ -491,12 +582,13 @@
         // Draw anchor points (rectangles)
         // Only draw p0 for first segment or if not continuing from previous
         if (index === 0 || isCurrentlyDrawing) {
+          const isStartSelected = state.activeEndpoint === 'start' && index === 0 && !isCurrentlyDrawing;
           const anchor0 = createSvgElement("rect", {
             x: seg.p0.x - 6,
             y: seg.p0.y - 6,
             width: 12,
             height: 12,
-            class: "anchor-point",
+            class: "anchor-point" + (isStartSelected ? " endpoint-selected" : ""),
             "data-segment": index,
             "data-point": "p0",
           });
@@ -504,12 +596,13 @@
         }
 
         // Always draw p3
+        const isEndSelected = state.activeEndpoint === 'end' && index === state.segments.length - 1 && !isCurrentlyDrawing;
         const anchor3 = createSvgElement("rect", {
           x: seg.p3.x - 6,
           y: seg.p3.y - 6,
           width: 12,
           height: 12,
-          class: "anchor-point",
+          class: "anchor-point" + (isEndSelected ? " endpoint-selected" : ""),
           "data-segment": index,
           "data-point": "p3",
         });
@@ -607,6 +700,15 @@
         const target = e.target;
         const pos = getMousePosition(e);
 
+        // Handle panning with space+drag or middle mouse button
+        if (state.spacePressed || e.button === 1) {
+          state.isPanning = true;
+          state.panStart = { x: e.clientX, y: e.clientY };
+          svg.style.cursor = 'grabbing';
+          e.preventDefault();
+          return;
+        }
+
         // Check if clicking on an existing point
         if (
           target.classList.contains("anchor-point") ||
@@ -615,12 +717,73 @@
           const segIndex = parseInt(target.dataset.segment);
           const pointType = target.dataset.point;
 
-          // Start dragging
+          // Ctrl+Click = delete node
+          if (e.ctrlKey || e.metaKey) {
+            deleteNode(segIndex, pointType);
+            state.activeEndpoint = null;
+            render();
+            return;
+          }
+
+          // Check if clicking on an endpoint (first or last anchor)
+          const isFirstAnchor = pointType === 'p0' && segIndex === 0;
+          const isLastAnchor = pointType === 'p3' && segIndex === state.segments.length - 1;
+
+          if (target.classList.contains("anchor-point") && (isFirstAnchor || isLastAnchor)) {
+            // Toggle endpoint selection
+            const clickedEndpoint = isFirstAnchor ? 'start' : 'end';
+            if (state.activeEndpoint === clickedEndpoint) {
+              state.activeEndpoint = null; // Deselect if clicking same endpoint
+            } else {
+              state.activeEndpoint = clickedEndpoint;
+            }
+            render();
+            return;
+          }
+
+          // Start dragging (not on endpoints that were just selected)
           state.dragTarget = { segmentIndex: segIndex, pointType };
+          state.activeEndpoint = null;
           return;
         }
 
-        // Start drawing new segment
+        // Clicking on canvas (not on a point)
+        // Clear endpoint selection and start new segment
+        if (state.activeEndpoint && state.segments.length > 0) {
+          // Extend from the selected endpoint
+          if (state.activeEndpoint === 'start') {
+            // Add segment at the beginning
+            const existingStart = state.segments[0].p0;
+            const newSegment = {
+              p0: { ...pos },
+              p1: { ...pos },
+              p2: { ...existingStart },
+              p3: { ...existingStart },
+            };
+            state.segments.unshift(newSegment);
+            // Add continuity for the new junction
+            state.continuity.unshift(continuitySelect.value);
+          } else {
+            // Add segment at the end (normal behavior)
+            const existingEnd = state.segments[state.segments.length - 1].p3;
+            const newSegment = {
+              p0: { ...existingEnd },
+              p1: { ...existingEnd },
+              p2: { ...pos },
+              p3: { ...pos },
+            };
+            state.segments.push(newSegment);
+            if (state.segments.length > 1) {
+              state.continuity.push(continuitySelect.value);
+            }
+          }
+          state.activeEndpoint = null;
+          applyAllContinuity();
+          render();
+          return;
+        }
+
+        // Start drawing new segment (original behavior)
         if (!state.isDrawing) {
           const startPoint =
             state.segments.length > 0
@@ -634,12 +797,35 @@
             p3: { ...pos },
           };
           state.isDrawing = true;
+          state.activeEndpoint = null;
         }
 
         render();
       }
 
       function handleMouseMove(e) {
+        // Handle panning
+        if (state.isPanning) {
+          const dx = e.clientX - state.panStart.x;
+          const dy = e.clientY - state.panStart.y;
+          
+          // Move all points
+          state.segments.forEach(seg => {
+            seg.p0.x += dx;
+            seg.p0.y += dy;
+            seg.p1.x += dx;
+            seg.p1.y += dy;
+            seg.p2.x += dx;
+            seg.p2.y += dy;
+            seg.p3.x += dx;
+            seg.p3.y += dy;
+          });
+          
+          state.panStart = { x: e.clientX, y: e.clientY };
+          render();
+          return;
+        }
+
         const pos = getMousePosition(e);
 
         // Handle dragging
@@ -695,6 +881,14 @@
       }
 
       function handleMouseUp(e) {
+        // End panning
+        if (state.isPanning) {
+          state.isPanning = false;
+          state.panStart = null;
+          svg.style.cursor = state.spacePressed ? 'grab' : 'crosshair';
+          return;
+        }
+
         if (state.dragTarget) {
           state.dragTarget = null;
           return;
@@ -736,6 +930,9 @@
         state.isDrawing = false;
         state.currentSegment = null;
         state.dragTarget = null;
+        state.activeEndpoint = null;
+        state.isPanning = false;
+        state.panStart = null;
         render();
       }
 
@@ -772,6 +969,29 @@
 
       clearBtn.addEventListener("click", handleClear);
       exportBtn.addEventListener("click", handleExport);
+
+      // Keyboard events for space+drag panning
+      document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && !state.spacePressed) {
+          state.spacePressed = true;
+          svg.style.cursor = 'grab';
+          e.preventDefault();
+        }
+      });
+
+      document.addEventListener('keyup', (e) => {
+        if (e.code === 'Space') {
+          state.spacePressed = false;
+          if (!state.isPanning) {
+            svg.style.cursor = 'crosshair';
+          }
+        }
+      });
+
+      // Prevent context menu on middle click
+      svg.addEventListener('contextmenu', (e) => {
+        if (e.button === 1) e.preventDefault();
+      });
 
       // Initial render
       render();
