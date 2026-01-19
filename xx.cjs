@@ -21,14 +21,21 @@ cat <<EEE
 
   🐙 GitHub: $(git ls-remote --get-url origin | awk '{\$1=\$1};1' | tr -d '\\n' | sed -E 's/git@github\\.com:([^/]+)\\/(.+)\\.git/https:\\/\\/github.com\\/\\1\\/\\2/g')
 
-  server:
-    http://\${HOST}:\${PORT}
+     🌎  HTTP Server is running http://\${HOST}:\${PORT}
+     🔒  HTTPS Server is running https://\${HOST}:\${HTTPS_PORT}
 
 EEE
 
       `,
       description: "Status of all things and help page",
       source: true,
+      confirm: false,
+    },
+    [`refreshhttps`]: {
+      command: `
+set -e
+/bin/bash refreshhttps.sh
+`,
       confirm: false,
     },
     [`server`]: {

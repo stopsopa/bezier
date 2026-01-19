@@ -70,5 +70,32 @@ app.use(
 );
 
 app.listen(port, host, () => {
-    log(`\n 🌎  Server is running http://${host}:${port}\n`);
+  log(`\n 🌎  HTTP Server is running http://${host}:${port}`);
 });
+
+// Try to start HTTPS server if certs exist
+import fs from "fs";
+import https from "https";
+
+const keyPath = path.join(__dirname, "key.pem");
+const certPath = path.join(__dirname, "cert.pem");
+
+if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+  try {
+    const httpsOptions = {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
+    };
+
+    // Use port + 1 for HTTPS, or 3443 if default
+    const httpsPort = process.env.HTTPS_PORT || parseInt(port) + 1;
+
+    https.createServer(httpsOptions, app).listen(httpsPort, host, () => {
+      log(` 🔒  HTTPS Server is running https://${host}:${httpsPort}\n`);
+    });
+  } catch (e) {
+    log(` ⚠️  Failed to start HTTPS server: ${e.message}\n`);
+  }
+} else {
+  throw new Error("SSL certificate files not found. Run /bin/bash refreshhttps.sh to generate them.");
+}
