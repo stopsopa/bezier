@@ -240,11 +240,12 @@
       }
 
       function updateNavLinks() {
-        const hash = window.location.hash;
-        document.getElementById('navCanvas').href = 'canvas.html' + hash;
-        document.getElementById('navHtml').href = 'html.html' + hash;
-        document.getElementById('navWebgl').href = 'webgl.html' + hash;
-        document.getElementById('navWebgpu').href = 'webgpu.html' + hash;
+        const hash = serializeCurves(state.curves);
+        const hashStr = hash ? '#' + hash : '';
+        document.getElementById('navCanvas').href = 'canvas.html' + hashStr;
+        document.getElementById('navHtml').href = 'html.html' + hashStr;
+        document.getElementById('navWebgl').href = 'webgl.html' + hashStr;
+        document.getElementById('navWebgpu').href = 'webgpu.html' + hashStr;
       }
 
       function loadFromURLHash() {

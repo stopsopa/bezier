@@ -28,19 +28,11 @@
         <div class="toolbar">
           <div class="nav-links">
             <span>View in:</span>
-            <a
-              href="webgl.html#508~190.5_334~325.5_199~272.5_439~91.5!371~220.5_583~49.5_613~126.5_498~278.5-i498~278.5_643~206.5_673~290.5_622~328.5!582~283.5_468~373.5_595~421.5_663~374.5"
-              class="nav-link"
-              onclick="
-                location.href = this.href;
-                location.reload();
-                return false;
-              "
-              >Example</a
-            >
+
             <a href="canvas.html" class="nav-link" id="navCanvas">Canvas</a>
             <a href="svg.html" class="nav-link" id="navSvg">SVG</a>
             <a href="html.html" class="nav-link" id="navHtml">HTML</a>
+            <a href="webgpu.html" class="nav-link" id="navWebgpu">WebGPU</a>
           </div>
           <div class="continuity-selector">
             <label for="continuity">Junction Mode:</label>
@@ -582,10 +574,12 @@
       }, 100);
 
       function updateNavLinks() {
-        const hash = window.location.hash;
-        document.getElementById("navCanvas").href = "canvas.html" + hash;
-        document.getElementById("navSvg").href = "svg.html" + hash;
-        document.getElementById("navHtml").href = "html.html" + hash;
+        const hash = serializeCurves(curves);
+        const hashStr = hash ? "#" + hash : "";
+        document.getElementById("navCanvas").href = "canvas.html" + hashStr;
+        document.getElementById("navSvg").href = "svg.html" + hashStr;
+        document.getElementById("navHtml").href = "html.html" + hashStr;
+        document.getElementById("navWebgpu").href = "webgpu.html" + hashStr;
       }
 
       function updateStats() {
