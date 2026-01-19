@@ -4,7 +4,6 @@
 // edit: https://github.com/stopsopa/stopsopa.github.io/blob/master/xx.cjs
 const S = "\\\\";
 
-
 module.exports = (setup) => {
   return {
     help: {
@@ -57,7 +56,7 @@ open "file://$(realpath "index.html")"
 `,
       confirm: false,
     },
-        [`coverage`]: {
+    [`coverage`]: {
       command: `
 set -e
 source .env

@@ -179,6 +179,7 @@
       let isPanning = false;
       let lastMouse = { x: 0, y: 0 };
       let spacePressed = false;
+      let canvasFocused = true;
 
       const SEGMENTS_PER_CURVE = 50;
 
@@ -289,11 +290,13 @@
         }
 
         // Draw control handles
-        const handleColor = [0.54, 0.36, 0.96, 0.6];
-        for (const curve of curves) {
-          for (const seg of curve.segments) {
-            drawLines([seg.p0, seg.p1], handleColor);
-            drawLines([seg.p2, seg.p3], handleColor);
+        if (canvasFocused) {
+          const handleColor = [0.54, 0.36, 0.96, 0.6];
+          for (const curve of curves) {
+            for (const seg of curve.segments) {
+              drawLines([seg.p0, seg.p1], handleColor);
+              drawLines([seg.p2, seg.p3], handleColor);
+            }
           }
         }
 
@@ -302,27 +305,29 @@
         const anchorColor = [0.0, 0.85, 1.0, 1.0];
         const selectedColor = [1.0, 0.58, 0.0, 1.0];
 
-        for (let ci = 0; ci < curves.length; ci++) {
-          const curve = curves[ci];
-          for (let si = 0; si < curve.segments.length; si++) {
-            const seg = curve.segments[si];
-            
-            // Control points
-            drawPoints([seg.p1, seg.p2], controlPointColor);
-            
-            // Anchor points
-            const isP0Selected = selectedEndpoint && 
-              selectedEndpoint.curveIndex === ci && 
-              selectedEndpoint.segmentIndex === si && 
-              selectedEndpoint.pointType === "p0";
-            const isP3Selected = selectedEndpoint && 
-              selectedEndpoint.curveIndex === ci && 
-              selectedEndpoint.segmentIndex === si && 
-              selectedEndpoint.pointType === "p3";
+        if (canvasFocused) {
+          for (let ci = 0; ci < curves.length; ci++) {
+            const curve = curves[ci];
+            for (let si = 0; si < curve.segments.length; si++) {
+              const seg = curve.segments[si];
               
-            drawPoints([seg.p0], isP0Selected ? selectedColor : anchorColor);
-            if (si === curve.segments.length - 1) {
-              drawPoints([seg.p3], isP3Selected ? selectedColor : anchorColor);
+              // Control points
+              drawPoints([seg.p1, seg.p2], controlPointColor);
+              
+              // Anchor points
+              const isP0Selected = selectedEndpoint && 
+                selectedEndpoint.curveIndex === ci && 
+                selectedEndpoint.segmentIndex === si && 
+                selectedEndpoint.pointType === "p0";
+              const isP3Selected = selectedEndpoint && 
+                selectedEndpoint.curveIndex === ci && 
+                selectedEndpoint.segmentIndex === si && 
+                selectedEndpoint.pointType === "p3";
+                
+              drawPoints([seg.p0], isP0Selected ? selectedColor : anchorColor);
+              if (si === curve.segments.length - 1) {
+                drawPoints([seg.p3], isP3Selected ? selectedColor : anchorColor);
+              }
             }
           }
         }
@@ -560,6 +565,25 @@
         if (e.code === "Space") {
           spacePressed = false;
           canvas.style.cursor = "crosshair";
+        }
+      });
+
+      canvas.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+      });
+
+      // Canvas focus/unfocus
+      document.addEventListener("mousedown", (e) => {
+        const clickedOnCanvas = canvas.contains(e.target);
+        if (clickedOnCanvas && !canvasFocused) {
+          canvasFocused = true;
+          render();
+        } else if (!clickedOnCanvas && canvasFocused) {
+          const isToolbarClick = e.target.closest(".toolbar") || e.target.closest(".sidebar");
+          if (!isToolbarClick) {
+            canvasFocused = false;
+            render();
+          }
         }
       });
 
