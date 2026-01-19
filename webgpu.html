@@ -73,12 +73,15 @@
             <hr />
             First of all navigator.gpu to be not undefined it requires https
             <br />
-            to test: <a href="https://webgpu.github.io/webgpu-samples/?sample=fractalCube" style="color: #8989b9;">https://webgpu.github.io/webgpu-samples/?sample=fractalCube</a> 
+            to test:
+            <a href="https://webgpu.github.io/webgpu-samples/?sample=fractalCube" style="color: #8989b9"
+              >https://webgpu.github.io/webgpu-samples/?sample=fractalCube</a
+            >
             <br />
-            To enable go to chrome://flags/ and search for "webgpu" 
+            To enable go to chrome://flags/ and search for "webgpu"
             <br />
-            to test if enabled visit chrome://gpu/ and see if 
-            <b></b>"WebGPU: Hardware accelerated</b> is green
+            to test if enabled visit chrome://gpu/ and see if
+            <b>"WebGPU: Hardware accelerated</b> is green
           </div>
           <div class="instructions">
             <strong>Drag</strong> = move points freely<br />
@@ -116,12 +119,7 @@
 
     <script type="module">
       import { createPoint, addPoints, subtractPoints, scalePoint, distance } from "./bezier-math.js";
-      import {
-        serializeCurves,
-        parseCurvesFromURL,
-        debounce,
-        deleteNodeFromCurves,
-      } from "./common.js";
+      import { serializeCurves, parseCurvesFromURL, debounce, deleteNodeFromCurves } from "./common.js";
 
       // ============================================================================
       // WebGPU Setup
@@ -234,7 +232,7 @@
 
           // Create uniform buffer (Only resolution and pan now, 16 bytes padded to 16)
           uniformBuffer = device.createBuffer({
-            size: 16, 
+            size: 16,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
           });
 
@@ -319,7 +317,7 @@
         if (!webgpuReady || allLines.length === 0) return;
 
         const dpr = window.devicePixelRatio || 1;
-        
+
         // Prepare data
         let totalVertices = 0;
         for (const { points } of allLines) {
@@ -331,11 +329,11 @@
         // Check buffer size and resize if needed (simple check)
         const requiredSize = totalVertices * 24;
         if (vertexBuffer.size < requiredSize) {
-           vertexBuffer.destroy();
-           vertexBuffer = device.createBuffer({
-             size: requiredSize * 2, // Grow
-             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-           });
+          vertexBuffer.destroy();
+          vertexBuffer = device.createBuffer({
+            size: requiredSize * 2, // Grow
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+          });
         }
 
         const data = new Float32Array(totalVertices * 6);
@@ -344,17 +342,17 @@
 
         for (const { points, color } of allLines) {
           if (points.length < 2) continue;
-          
+
           const startVertex = offset / 6;
           drawCalls.push({ start: startVertex, count: points.length });
 
           for (let i = 0; i < points.length; i++) {
-             data[offset++] = points[i].x * dpr;
-             data[offset++] = points[i].y * dpr;
-             data[offset++] = color[0];
-             data[offset++] = color[1];
-             data[offset++] = color[2];
-             data[offset++] = color[3];
+            data[offset++] = points[i].x * dpr;
+            data[offset++] = points[i].y * dpr;
+            data[offset++] = color[0];
+            data[offset++] = color[1];
+            data[offset++] = color[2];
+            data[offset++] = color[3];
           }
         }
 
@@ -362,10 +360,7 @@
         device.queue.writeBuffer(vertexBuffer, 0, data);
 
         // Write uniforms (resolution/pan only)
-        const uniforms = new Float32Array([
-            canvas.width, canvas.height,
-            pan.x * dpr, pan.y * dpr
-        ]);
+        const uniforms = new Float32Array([canvas.width, canvas.height, pan.x * dpr, pan.y * dpr]);
         device.queue.writeBuffer(uniformBuffer, 0, uniforms);
 
         const encoder = device.createCommandEncoder();
@@ -387,7 +382,7 @@
         renderPass.setVertexBuffer(0, vertexBuffer);
 
         for (const call of drawCalls) {
-           renderPass.draw(call.count, 1, call.start, 0);
+          renderPass.draw(call.count, 1, call.start, 0);
         }
 
         renderPass.end();
@@ -420,42 +415,50 @@
           curve.segments.forEach((seg, j) => {
             const points = tessellateSegment(seg);
             allLines.push({ points, color: curveColor });
-            
+
             if (canvasFocused) {
-               // Handles
-               allLines.push({ points: [seg.p0, seg.p1], color: handleColor });
-               allLines.push({ points: [seg.p2, seg.p3], color: handleColor });
+              // Handles
+              allLines.push({ points: [seg.p0, seg.p1], color: handleColor });
+              allLines.push({ points: [seg.p2, seg.p3], color: handleColor });
 
-               // Helper to draw square
-               const drawSquare = (center, color, size = 6) => {
-                 const half = size / 2;
-                 const p = [
-                   { x: center.x - half, y: center.y - half },
-                   { x: center.x + half, y: center.y - half },
-                   { x: center.x + half, y: center.y + half },
-                   { x: center.x - half, y: center.y + half },
-                   { x: center.x - half, y: center.y - half },
-                 ];
-                 allLines.push({ points: p, color });
-               };
+              // Helper to draw square
+              const drawSquare = (center, color, size = 6) => {
+                const half = size / 2;
+                const p = [
+                  { x: center.x - half, y: center.y - half },
+                  { x: center.x + half, y: center.y - half },
+                  { x: center.x + half, y: center.y + half },
+                  { x: center.x - half, y: center.y + half },
+                  { x: center.x - half, y: center.y - half },
+                ];
+                allLines.push({ points: p, color });
+              };
 
-               const controlPointColor = [0.54, 0.36, 0.96, 1.0];
-               const anchorColor = [0.0, 0.85, 1.0, 1.0];
-               const selectedColor = [1.0, 0.58, 0.0, 1.0];
+              const controlPointColor = [0.54, 0.36, 0.96, 1.0];
+              const anchorColor = [0.0, 0.85, 1.0, 1.0];
+              const selectedColor = [1.0, 0.58, 0.0, 1.0];
 
-               // Draw Control Points
-               drawSquare(seg.p1, controlPointColor, 6);
-               drawSquare(seg.p2, controlPointColor, 6);
+              // Draw Control Points
+              drawSquare(seg.p1, controlPointColor, 6);
+              drawSquare(seg.p2, controlPointColor, 6);
 
-               // Draw Anchor Points
-               const isP0Selected = selectedEndpoint && selectedEndpoint.curveIndex === i && selectedEndpoint.segmentIndex === j && selectedEndpoint.pointType === "p0";
-               drawSquare(seg.p0, isP0Selected ? selectedColor : anchorColor, 8);
-            
-               // Draw p3 if last segment
-               if (j === curve.segments.length - 1) {
-                 const isP3Selected = selectedEndpoint && selectedEndpoint.curveIndex === i && selectedEndpoint.segmentIndex === j && selectedEndpoint.pointType === "p3";
-                 drawSquare(seg.p3, isP3Selected ? selectedColor : anchorColor, 8);
-               }
+              // Draw Anchor Points
+              const isP0Selected =
+                selectedEndpoint &&
+                selectedEndpoint.curveIndex === i &&
+                selectedEndpoint.segmentIndex === j &&
+                selectedEndpoint.pointType === "p0";
+              drawSquare(seg.p0, isP0Selected ? selectedColor : anchorColor, 8);
+
+              // Draw p3 if last segment
+              if (j === curve.segments.length - 1) {
+                const isP3Selected =
+                  selectedEndpoint &&
+                  selectedEndpoint.curveIndex === i &&
+                  selectedEndpoint.segmentIndex === j &&
+                  selectedEndpoint.pointType === "p3";
+                drawSquare(seg.p3, isP3Selected ? selectedColor : anchorColor, 8);
+              }
             }
           });
         });
@@ -465,7 +468,7 @@
         // Draw control points using 2D overlay (WebGPU point sprites are complex)
         const ctx2d = document.createElement("canvas").getContext("2d");
         // For simplicity, we'll just use the stats update
-        
+
         updateStats();
         updateNavLinks();
       }
@@ -579,7 +582,13 @@
         }
 
         if (e.ctrlKey && hit && (hit.pointType === "p0" || hit.pointType === "p3")) {
-          const result = deleteNodeFromCurves(curves, activeCurveIndex, hit.curveIndex, hit.segmentIndex, hit.pointType);
+          const result = deleteNodeFromCurves(
+            curves,
+            activeCurveIndex,
+            hit.curveIndex,
+            hit.segmentIndex,
+            hit.pointType,
+          );
           curves = result.curves;
           activeCurveIndex = result.activeCurveIndex;
           selectedEndpoint = null;
@@ -669,7 +678,7 @@
 
         if (dragging.pointType === "p0" || dragging.pointType === "p3") {
           const delta = subtractPoints(pos, oldPos);
-          
+
           if (dragging.pointType === "p0") {
             seg.p1 = addPoints(seg.p1, delta);
             if (dragging.segmentIndex > 0) {
@@ -782,7 +791,7 @@
           <div class="segment-item${i === activeCurveIndex ? " selected" : ""}">
             <strong>Curve ${i + 1}</strong>: ${curve.segments.length} segment(s)
           </div>
-        `
+        `,
           )
           .join("");
       }
@@ -824,7 +833,7 @@
           curves = parseCurvesFromURL(hash);
           if (curves.length > 0) activeCurveIndex = 0;
         }
-        
+
         resizeCanvas();
         await initWebGPU();
         render();
@@ -839,5 +848,13 @@
 
       init();
     </script>
+    <script
+      src="https://cdn.jsdelivr.net/gh/MarketingPipeline/GitHub-Ribbon-Web-Component/dist/github-ribbon-wc.min.js"
+      defer
+    ></script>
+
+    <github-ribbon link="https://github.com/stopsopa/bezier" type="right" color="#679d2c" side="bottom-right"
+      >Fork me on GitHub</github-ribbon
+    >
   </body>
 </html>

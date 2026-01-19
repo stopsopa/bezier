@@ -19,7 +19,7 @@
       /* SVG-specific styles */
       .curve-path {
         fill: none;
-        stroke: #FFD700;
+        stroke: #ffd700;
         stroke-width: 3;
         stroke-linecap: round;
       }
@@ -66,8 +66,13 @@
       }
 
       @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.6; }
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.6;
+        }
       }
 
       .point-label {
@@ -154,9 +159,7 @@
 
           <h3>Segments</h3>
           <div id="segmentList" class="segment-list">
-            <div style="color: #666; font-size: 0.8rem">
-              No segments yet. Click to start drawing!
-            </div>
+            <div style="color: #666; font-size: 0.8rem">No segments yet. Click to start drawing!</div>
           </div>
         </div>
       </div>
@@ -177,12 +180,7 @@
         enforceC1,
         enforceC2,
       } from "./bezier-math.js";
-      import {
-        serializeCurves,
-        parseCurvesFromURL,
-        deleteNodeFromCurves,
-        debounce,
-      } from "./common.js";
+      import { serializeCurves, parseCurvesFromURL, deleteNodeFromCurves, debounce } from "./common.js";
 
       // ========================================================================
       // STATE
@@ -232,20 +230,20 @@
       function updateURLHash() {
         const serialized = serializeCurves(state.curves);
         if (serialized) {
-          window.history.replaceState(null, '', '#' + serialized);
+          window.history.replaceState(null, "", "#" + serialized);
         } else {
-          window.history.replaceState(null, '', window.location.pathname);
+          window.history.replaceState(null, "", window.location.pathname);
         }
         updateNavLinks();
       }
 
       function updateNavLinks() {
         const hash = serializeCurves(state.curves);
-        const hashStr = hash ? '#' + hash : '';
-        document.getElementById('navCanvas').href = 'canvas.html' + hashStr;
-        document.getElementById('navHtml').href = 'html.html' + hashStr;
-        document.getElementById('navWebgl').href = 'webgl.html' + hashStr;
-        document.getElementById('navWebgpu').href = 'webgpu.html' + hashStr;
+        const hashStr = hash ? "#" + hash : "";
+        document.getElementById("navCanvas").href = "canvas.html" + hashStr;
+        document.getElementById("navHtml").href = "html.html" + hashStr;
+        document.getElementById("navWebgl").href = "webgl.html" + hashStr;
+        document.getElementById("navWebgpu").href = "webgpu.html" + hashStr;
       }
 
       function loadFromURLHash() {
@@ -258,7 +256,7 @@
               return true;
             }
           } catch (e) {
-            console.warn('Failed to parse URL hash:', e);
+            console.warn("Failed to parse URL hash:", e);
           }
         }
         return false;
@@ -271,13 +269,7 @@
       // ========================================================================
 
       function deleteNode(curveIndex, segmentIndex, pointType) {
-        const result = deleteNodeFromCurves(
-          state.curves,
-          state.activeCurveIndex,
-          curveIndex,
-          segmentIndex,
-          pointType
-        );
+        const result = deleteNodeFromCurves(state.curves, state.activeCurveIndex, curveIndex, segmentIndex, pointType);
         state.curves = result.curves;
         state.activeCurveIndex = result.activeCurveIndex;
       }
@@ -336,11 +328,11 @@
         }
 
         // Show/hide control points and handles based on canvas focus
-        handlesGroup.style.display = state.canvasFocused ? '' : 'none';
-        pointsGroup.style.display = state.canvasFocused ? '' : 'none';
+        handlesGroup.style.display = state.canvasFocused ? "" : "none";
+        pointsGroup.style.display = state.canvasFocused ? "" : "none";
 
         updateSegmentList();
-        
+
         // Update URL hash to keep it in sync (but not during drawing)
         if (!state.isDrawing) {
           debouncedUpdateURLHash();
@@ -405,10 +397,11 @@
         // Draw anchor points (rectangles)
         // Only draw p0 for first segment of a curve or when drawing
         if (segIndex === 0 || isCurrentlyDrawing) {
-          const isStartSelected = state.activeEndpoint && 
-            state.activeEndpoint.curveIndex === curveIndex && 
-            state.activeEndpoint.end === 'start' && 
-            segIndex === 0 && 
+          const isStartSelected =
+            state.activeEndpoint &&
+            state.activeEndpoint.curveIndex === curveIndex &&
+            state.activeEndpoint.end === "start" &&
+            segIndex === 0 &&
             !isCurrentlyDrawing;
           const anchor0 = createSvgElement("rect", {
             x: seg.p0.x - 6,
@@ -424,10 +417,11 @@
         }
 
         // Always draw p3
-        const isEndSelected = state.activeEndpoint && 
-          state.activeEndpoint.curveIndex === curveIndex && 
-          state.activeEndpoint.end === 'end' && 
-          segIndex === totalSegments - 1 && 
+        const isEndSelected =
+          state.activeEndpoint &&
+          state.activeEndpoint.curveIndex === curveIndex &&
+          state.activeEndpoint.end === "end" &&
+          segIndex === totalSegments - 1 &&
           !isCurrentlyDrawing;
         const anchor3 = createSvgElement("rect", {
           x: seg.p3.x - 6,
@@ -449,11 +443,11 @@
           return;
         }
 
-        let html = '';
+        let html = "";
         state.curves.forEach((curve, curveIndex) => {
           html += `<div style="margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
             <div style="color: #00d9ff; font-weight: bold; margin-bottom: 6px;">Curve ${curveIndex + 1}</div>`;
-          
+
           curve.segments.forEach((seg, i) => {
             const junctionMode = i > 0 ? curve.continuity[i - 1] : null;
             html += `
@@ -464,7 +458,7 @@
               </div>
             `;
           });
-          html += '</div>';
+          html += "</div>";
         });
 
         segmentList.innerHTML = html;
@@ -479,17 +473,17 @@
       function applyControlPointContinuity(curveIndex, segmentIndex, pointType, pos) {
         if (curveIndex < 0 || curveIndex >= state.curves.length) return;
         const curve = state.curves[curveIndex];
-        
+
         // p1 is outgoing control from p0 (shared with previous segment's p3)
         // p2 is incoming control to p3 (shared with next segment's p0)
-        if (pointType === 'p1' && segmentIndex > 0) {
+        if (pointType === "p1" && segmentIndex > 0) {
           // Mirror p1 movement to previous segment's p2
           const seg = curve.segments[segmentIndex];
           const anchor = seg.p0; // This is also previous segment's p3
           const offset = subtractPoints(pos, anchor);
           curve.segments[segmentIndex - 1].p2 = subtractPoints(anchor, offset);
         }
-        if (pointType === 'p2' && segmentIndex < curve.segments.length - 1) {
+        if (pointType === "p2" && segmentIndex < curve.segments.length - 1) {
           // Mirror p2 movement to next segment's p1
           const seg = curve.segments[segmentIndex];
           const anchor = seg.p3; // This is also next segment's p0
@@ -514,24 +508,21 @@
         if (state.spacePressed || e.button === 1) {
           state.isPanning = true;
           state.panStart = { x: e.clientX, y: e.clientY };
-          svg.style.cursor = 'grabbing';
+          svg.style.cursor = "grabbing";
           e.preventDefault();
           return;
         }
 
         // Check if clicking on an existing point
-        if (
-          target.classList.contains("anchor-point") ||
-          target.classList.contains("control-point")
-        ) {
+        if (target.classList.contains("anchor-point") || target.classList.contains("control-point")) {
           const curveIndex = parseInt(target.dataset.curve);
           const segIndex = parseInt(target.dataset.segment);
           const pointType = target.dataset.point;
-          
+
           if (isNaN(curveIndex) || curveIndex < 0 || curveIndex >= state.curves.length) {
             return; // Invalid curve
           }
-          
+
           const curve = state.curves[curveIndex];
 
           // Ctrl+Click on anchor = delete node
@@ -543,12 +534,12 @@
           }
 
           // Check if clicking on an endpoint (first or last anchor of this curve)
-          const isFirstAnchor = pointType === 'p0' && segIndex === 0;
-          const isLastAnchor = pointType === 'p3' && segIndex === curve.segments.length - 1;
+          const isFirstAnchor = pointType === "p0" && segIndex === 0;
+          const isLastAnchor = pointType === "p3" && segIndex === curve.segments.length - 1;
 
           // Start dragging - ALL points can be dragged including endpoints
           state.dragTarget = { curveIndex, segmentIndex: segIndex, pointType };
-          
+
           // Track potential endpoint selection (will confirm on mouseUp if no drag)
           if (target.classList.contains("anchor-point") && (isFirstAnchor || isLastAnchor)) {
             state.potentialEndpointSelect = {
@@ -560,20 +551,20 @@
           } else {
             state.potentialEndpointSelect = null;
           }
-          
+
           state.activeEndpoint = null; // Clear selection when starting to interact
           return;
         }
 
         // Clicking on canvas (not on a point)
-        
+
         // Ctrl+click on canvas = extend from selected endpoint
         if ((e.ctrlKey || e.metaKey) && state.activeEndpoint) {
           const { curveIndex, end } = state.activeEndpoint;
           if (curveIndex >= 0 && curveIndex < state.curves.length) {
             const curve = state.curves[curveIndex];
-            
-            if (end === 'start') {
+
+            if (end === "start") {
               // Add segment at the beginning of this curve
               const existingStart = curve.segments[0].p0;
               const newSegment = {
@@ -583,7 +574,7 @@
                 p3: { ...existingStart },
               };
               curve.segments.unshift(newSegment);
-              curve.continuity.unshift('independent');
+              curve.continuity.unshift("independent");
             } else {
               // Add segment at the end of this curve
               const existingEnd = curve.segments[curve.segments.length - 1].p3;
@@ -595,7 +586,7 @@
               };
               curve.segments.push(newSegment);
               if (curve.segments.length > 1) {
-                curve.continuity.push('independent');
+                curve.continuity.push("independent");
               }
             }
             state.activeEndpoint = null;
@@ -610,7 +601,7 @@
           const newCurveIndex = state.curves.length;
           state.curves.push({ segments: [], continuity: [] });
           state.currentCurveIndex = newCurveIndex;
-          
+
           state.currentSegment = {
             p0: { ...pos },
             p1: { ...pos },
@@ -634,10 +625,10 @@
         if (state.isPanning) {
           const dx = e.clientX - state.panStart.x;
           const dy = e.clientY - state.panStart.y;
-          
+
           // Move all points in all curves
-          state.curves.forEach(curve => {
-            curve.segments.forEach(seg => {
+          state.curves.forEach((curve) => {
+            curve.segments.forEach((seg) => {
               seg.p0.x += dx;
               seg.p0.y += dy;
               seg.p1.x += dx;
@@ -648,7 +639,7 @@
               seg.p3.y += dy;
             });
           });
-          
+
           state.panStart = { x: e.clientX, y: e.clientY };
           render();
           return;
@@ -659,15 +650,15 @@
         // Handle dragging
         if (state.dragTarget) {
           const { curveIndex, segmentIndex, pointType } = state.dragTarget;
-          
+
           if (curveIndex < 0 || curveIndex >= state.curves.length) {
             state.dragTarget = null;
             return;
           }
-          
+
           const curve = state.curves[curveIndex];
           const seg = curve.segments[segmentIndex];
-          
+
           if (!seg) {
             state.dragTarget = null;
             return;
@@ -707,10 +698,7 @@
           const handleOffset = subtractPoints(pos, startPoint);
 
           state.currentSegment.p1 = addPoints(startPoint, handleOffset);
-          state.currentSegment.p2 = subtractPoints(
-            pos,
-            scalePoint(handleOffset, 0.3),
-          );
+          state.currentSegment.p2 = subtractPoints(pos, scalePoint(handleOffset, 0.3));
           state.currentSegment.p3 = pos;
 
           render();
@@ -722,7 +710,7 @@
         if (state.isPanning) {
           state.isPanning = false;
           state.panStart = null;
-          svg.style.cursor = state.spacePressed ? 'grab' : 'crosshair';
+          svg.style.cursor = state.spacePressed ? "grab" : "crosshair";
           return;
         }
 
@@ -730,19 +718,21 @@
           // If we didn't drag much and it was an endpoint, select it
           if (state.potentialEndpointSelect && !state.didDrag) {
             const { curveIndex, isFirst } = state.potentialEndpointSelect;
-            const clickedEndpoint = { curveIndex, end: isFirst ? 'start' : 'end' };
-            
+            const clickedEndpoint = { curveIndex, end: isFirst ? "start" : "end" };
+
             // Toggle selection
-            if (state.activeEndpoint && 
-                state.activeEndpoint.curveIndex === clickedEndpoint.curveIndex && 
-                state.activeEndpoint.end === clickedEndpoint.end) {
+            if (
+              state.activeEndpoint &&
+              state.activeEndpoint.curveIndex === clickedEndpoint.curveIndex &&
+              state.activeEndpoint.end === clickedEndpoint.end
+            ) {
               state.activeEndpoint = null;
             } else {
               state.activeEndpoint = clickedEndpoint;
             }
             render();
           }
-          
+
           state.dragTarget = null;
           state.potentialEndpointSelect = null;
           state.didDrag = false;
@@ -753,13 +743,13 @@
         // Finish placing current segment
         if (state.isDrawing && state.currentSegment) {
           const curveIndex = state.currentCurveIndex;
-          
+
           if (curveIndex >= 0 && curveIndex < state.curves.length) {
             const curve = state.curves[curveIndex];
-            
+
             // New segments are independent by default
             if (curve.segments.length > 0) {
-              curve.continuity.push('independent');
+              curve.continuity.push("independent");
             }
 
             curve.segments.push(state.currentSegment);
@@ -814,22 +804,25 @@
       function handleCopyUrl() {
         const serialized = serializeToURL();
         if (!serialized) {
-          alert('No curves to share!');
+          alert("No curves to share!");
           return;
         }
-        const fullUrl = window.location.origin + window.location.pathname + '#' + serialized;
-        navigator.clipboard.writeText(fullUrl).then(() => {
-          // Temporarily change button text to show success
-          const originalText = copyUrlBtn.textContent;
-          copyUrlBtn.textContent = 'Copied!';
-          setTimeout(() => {
-            copyUrlBtn.textContent = originalText;
-          }, 1500);
-        }).catch(err => {
-          console.error('Failed to copy URL:', err);
-          // Fallback: show in a prompt
-          prompt('Copy this URL:', fullUrl);
-        });
+        const fullUrl = window.location.origin + window.location.pathname + "#" + serialized;
+        navigator.clipboard
+          .writeText(fullUrl)
+          .then(() => {
+            // Temporarily change button text to show success
+            const originalText = copyUrlBtn.textContent;
+            copyUrlBtn.textContent = "Copied!";
+            setTimeout(() => {
+              copyUrlBtn.textContent = originalText;
+            }, 1500);
+          })
+          .catch((err) => {
+            console.error("Failed to copy URL:", err);
+            // Fallback: show in a prompt
+            prompt("Copy this URL:", fullUrl);
+          });
       }
 
       // ========================================================================
@@ -851,30 +844,30 @@
       copyUrlBtn.addEventListener("click", handleCopyUrl);
 
       // Keyboard events for space+drag panning and escape for focus mode
-      document.addEventListener('keydown', (e) => {
-        if (e.code === 'Space' && !state.spacePressed) {
+      document.addEventListener("keydown", (e) => {
+        if (e.code === "Space" && !state.spacePressed) {
           state.spacePressed = true;
-          svg.style.cursor = 'grab';
+          svg.style.cursor = "grab";
           e.preventDefault();
         }
         // Escape key enters focus mode (hides control points)
-        if (e.code === 'Escape' && state.canvasFocused) {
+        if (e.code === "Escape" && state.canvasFocused) {
           state.canvasFocused = false;
           render();
         }
       });
 
-      document.addEventListener('keyup', (e) => {
-        if (e.code === 'Space') {
+      document.addEventListener("keyup", (e) => {
+        if (e.code === "Space") {
           state.spacePressed = false;
           if (!state.isPanning) {
-            svg.style.cursor = 'crosshair';
+            svg.style.cursor = "crosshair";
           }
         }
       });
 
       // Prevent context menu on middle click
-      svg.addEventListener('contextmenu', (e) => {
+      svg.addEventListener("contextmenu", (e) => {
         if (e.button === 1) e.preventDefault();
       });
 
@@ -883,14 +876,14 @@
       updateNavLinks();
 
       // Canvas focus/unfocus - hide control points when clicking outside canvas
-      document.addEventListener('mousedown', (e) => {
+      document.addEventListener("mousedown", (e) => {
         const clickedOnCanvas = svg.contains(e.target);
         if (clickedOnCanvas && !state.canvasFocused) {
           state.canvasFocused = true;
           render();
         } else if (!clickedOnCanvas && state.canvasFocused) {
           // Check if click is on a toolbar button - don't unfocus for those
-          const isToolbarClick = e.target.closest('.toolbar') || e.target.closest('.sidebar');
+          const isToolbarClick = e.target.closest(".toolbar") || e.target.closest(".sidebar");
           if (!isToolbarClick) {
             state.canvasFocused = false;
             render();
@@ -901,5 +894,13 @@
       // Initial render
       render();
     </script>
+    <script
+      src="https://cdn.jsdelivr.net/gh/MarketingPipeline/GitHub-Ribbon-Web-Component/dist/github-ribbon-wc.min.js"
+      defer
+    ></script>
+
+    <github-ribbon link="https://github.com/stopsopa/bezier" type="right" color="#679d2c" side="bottom-right"
+      >Fork me on GitHub</github-ribbon
+    >
   </body>
 </html>

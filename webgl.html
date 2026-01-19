@@ -87,12 +87,7 @@
 
     <script type="module">
       import { createPoint, addPoints, subtractPoints, scalePoint, distance } from "./bezier-math.js";
-      import {
-        serializeCurves,
-        parseCurvesFromURL,
-        debounce,
-        deleteNodeFromCurves,
-      } from "./common.js";
+      import { serializeCurves, parseCurvesFromURL, debounce, deleteNodeFromCurves } from "./common.js";
 
       // ============================================================================
       // WebGL Setup
@@ -100,7 +95,7 @@
 
       const canvas = document.getElementById("canvas");
       const gl = canvas.getContext("webgl", { antialias: true });
-      
+
       if (!gl) {
         alert("WebGL not supported!");
         throw new Error("WebGL not supported");
@@ -310,20 +305,22 @@
             const curve = curves[ci];
             for (let si = 0; si < curve.segments.length; si++) {
               const seg = curve.segments[si];
-              
+
               // Control points
               drawPoints([seg.p1, seg.p2], controlPointColor);
-              
+
               // Anchor points
-              const isP0Selected = selectedEndpoint && 
-                selectedEndpoint.curveIndex === ci && 
-                selectedEndpoint.segmentIndex === si && 
+              const isP0Selected =
+                selectedEndpoint &&
+                selectedEndpoint.curveIndex === ci &&
+                selectedEndpoint.segmentIndex === si &&
                 selectedEndpoint.pointType === "p0";
-              const isP3Selected = selectedEndpoint && 
-                selectedEndpoint.curveIndex === ci && 
-                selectedEndpoint.segmentIndex === si && 
+              const isP3Selected =
+                selectedEndpoint &&
+                selectedEndpoint.curveIndex === ci &&
+                selectedEndpoint.segmentIndex === si &&
                 selectedEndpoint.pointType === "p3";
-                
+
               drawPoints([seg.p0], isP0Selected ? selectedColor : anchorColor);
               if (si === curve.segments.length - 1) {
                 drawPoints([seg.p3], isP3Selected ? selectedColor : anchorColor);
@@ -432,7 +429,13 @@
         }
 
         if (e.ctrlKey && hit && (hit.pointType === "p0" || hit.pointType === "p3")) {
-          const result = deleteNodeFromCurves(curves, activeCurveIndex, hit.curveIndex, hit.segmentIndex, hit.pointType);
+          const result = deleteNodeFromCurves(
+            curves,
+            activeCurveIndex,
+            hit.curveIndex,
+            hit.segmentIndex,
+            hit.pointType,
+          );
           curves = result.curves;
           activeCurveIndex = result.activeCurveIndex;
           selectedEndpoint = null;
@@ -510,7 +513,7 @@
 
         if (dragging.pointType === "p0" || dragging.pointType === "p3") {
           const delta = subtractPoints(pos, oldPos);
-          
+
           if (dragging.pointType === "p0") {
             seg.p1 = addPoints(seg.p1, delta);
             if (dragging.segmentIndex > 0) {
@@ -623,7 +626,7 @@
           <div class="segment-item${i === activeCurveIndex ? " selected" : ""}">
             <strong>Curve ${i + 1}</strong>: ${curve.segments.length} segment(s)
           </div>
-        `
+        `,
           )
           .join("");
       }
@@ -678,5 +681,13 @@
 
       init();
     </script>
+    <script
+      src="https://cdn.jsdelivr.net/gh/MarketingPipeline/GitHub-Ribbon-Web-Component/dist/github-ribbon-wc.min.js"
+      defer
+    ></script>
+
+    <github-ribbon link="https://github.com/stopsopa/bezier" type="right" color="#679d2c" side="bottom-right"
+      >Fork me on GitHub</github-ribbon
+    >
   </body>
 </html>
