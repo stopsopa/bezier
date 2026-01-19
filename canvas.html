@@ -41,6 +41,8 @@
             >
             <a href="svg.html" class="nav-link" id="navSvg">SVG</a>
             <a href="html.html" class="nav-link" id="navHtml">HTML</a>
+            <a href="webgl.html" class="nav-link" id="navWebgl">WebGL</a>
+            <a href="webgpu.html" class="nav-link" id="navWebgpu">WebGPU</a>
           </div>
           <div class="continuity-selector">
             <label for="continuity">Junction Mode:</label>
@@ -141,6 +143,8 @@
         const hash = window.location.hash;
         document.getElementById("navSvg").href = "svg.html" + hash;
         document.getElementById("navHtml").href = "html.html" + hash;
+        document.getElementById("navWebgl").href = "webgl.html" + hash;
+        document.getElementById("navWebgpu").href = "webgpu.html" + hash;
       }
 
       function loadFromURLHash() {

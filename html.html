@@ -118,6 +118,8 @@
           <span>View in:</span>
           <a href="svg.html" class="nav-link" id="navSvg">SVG</a>
           <a href="canvas.html" class="nav-link" id="navCanvas">Canvas</a>
+          <a href="webgl.html" class="nav-link" id="navWebgl">WebGL</a>
+          <a href="webgpu.html" class="nav-link" id="navWebgpu">WebGPU</a>
         </div>
         <div class="segment-selector">
           <label for="segmentCount">Segments/Curve:</label>
@@ -245,6 +247,8 @@
       const hash = window.location.hash;
       document.getElementById('navSvg').href = 'svg.html' + hash;
       document.getElementById('navCanvas').href = 'canvas.html' + hash;
+      document.getElementById('navWebgl').href = 'webgl.html' + hash;
+      document.getElementById('navWebgpu').href = 'webgpu.html' + hash;
     }
 
     function loadFromURLHash() {

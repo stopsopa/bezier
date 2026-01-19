@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bézier Curve Editor - WebGL</title>
+    <link rel="stylesheet" href="common.css" />
+    <style>
+      /* WebGL Editor Theme: Orange/Yellow */
+      :root {
+        --theme-primary: #f39c12;
+        --theme-primary-rgb: 243, 156, 18;
+        --theme-gradient: linear-gradient(90deg, #f39c12, #e74c3c);
+        --theme-btn-primary: linear-gradient(135deg, #f39c12, #e67e22);
+        --theme-btn-primary-text: #000;
+        /* Curve color: #ff3366 magenta */
+      }
+
+      #canvas {
+        position: relative;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>🔺 Bézier Curve Editor (WebGL)</h1>
+        <div class="toolbar">
+          <div class="nav-links">
+            <span>View in:</span>
+            <a
+              href="webgl.html#508~190.5_334~325.5_199~272.5_439~91.5!371~220.5_583~49.5_613~126.5_498~278.5-i498~278.5_643~206.5_673~290.5_622~328.5!582~283.5_468~373.5_595~421.5_663~374.5"
+              class="nav-link"
+              onclick="
+                location.href = this.href;
+                location.reload();
+                return false;
+              "
+              >Example</a
+            >
+            <a href="canvas.html" class="nav-link" id="navCanvas">Canvas</a>
+            <a href="svg.html" class="nav-link" id="navSvg">SVG</a>
+            <a href="html.html" class="nav-link" id="navHtml">HTML</a>
+          </div>
+          <div class="continuity-selector">
+            <label for="continuity">Junction Mode:</label>
+            <select id="continuity">
+              <option value="independent">Independent</option>
+              <option value="c1" selected>C¹ (Tangent)</option>
+              <option value="c2">C² (Curvature)</option>
+            </select>
+          </div>
+          <button class="btn-secondary" id="exportBtn">Export JSON</button>
+          <button class="btn-secondary" id="copyUrlBtn">Copy URL</button>
+          <button class="btn-danger" id="clearBtn">Clear All</button>
+        </div>
+      </header>
+
+      <div class="main-content">
+        <div class="canvas-container">
+          <canvas id="canvas"></canvas>
+          <div class="instructions">
+            <strong>Drag</strong> = move points freely<br />
+            <strong>Ctrl+drag</strong> control point = maintain continuity<br />
+            <strong>Shift+click</strong> = start new independent curve<br />
+            <strong>Click endpoint</strong> then <strong>Ctrl+click</strong> canvas = extend<br />
+            <strong>Ctrl+click</strong> anchor = delete · <strong>Space+drag</strong> = pan
+          </div>
+          <div class="stats" id="stats">Curves: 0</div>
+        </div>
+
+        <div class="sidebar">
+          <h3>How It Works</h3>
+          <div class="info-box">
+            <p>This renderer uses <code>WebGL</code>!</p>
+            <p style="margin-top: 8px">
+              Curves are tessellated into line segments and rendered using WebGL shaders for GPU-accelerated drawing.
+            </p>
+          </div>
+
+          <h3>Continuity Modes</h3>
+          <div class="info-box">
+            <p><code>C⁰</code> - Points meet (always enforced)</p>
+            <p><code>C¹</code> - Smooth tangent (direction matches)</p>
+            <p><code>C²</code> - Smooth curvature (acceleration matches)</p>
+          </div>
+
+          <h3>Curves</h3>
+          <div id="segmentList" class="segment-list">
+            <div style="color: #666; font-size: 0.8rem">No curves yet. Shift+click to start drawing!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { createPoint, addPoints, subtractPoints, scalePoint, distance } from "./bezier-math.js";
+      import {
+        serializeCurves,
+        parseCurvesFromURL,
+        debounce,
+        deleteNodeFromCurves,
+      } from "./common.js";
+
+      // ============================================================================
+      // WebGL Setup
+      // ============================================================================
+
+      const canvas = document.getElementById("canvas");
+      const gl = canvas.getContext("webgl", { antialias: true });
+      
+      if (!gl) {
+        alert("WebGL not supported!");
+        throw new Error("WebGL not supported");
+      }
+
+      // Vertex shader - transforms 2D positions
+      const vertexShaderSource = `
+        attribute vec2 a_position;
+        uniform vec2 u_resolution;
+        uniform vec2 u_pan;
+        
+        void main() {
+          // Apply pan and convert to clip space
+          vec2 position = a_position + u_pan;
+          vec2 clipSpace = (position / u_resolution) * 2.0 - 1.0;
+          gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
+          gl_PointSize = 14.0;
+        }
+      `;
+
+      // Fragment shader - colors pixels
+      const fragmentShaderSource = `
+        precision mediump float;
+        uniform vec4 u_color;
+        
+        void main() {
+          gl_FragColor = u_color;
+        }
+      `;
+
+      function createShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          console.error(gl.getShaderInfoLog(shader));
+          gl.deleteShader(shader);
+          return null;
+        }
+        return shader;
+      }
+
+      function createProgram(gl, vertexShader, fragmentShader) {
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          console.error(gl.getProgramInfoLog(program));
+          gl.deleteProgram(program);
+          return null;
+        }
+        return program;
+      }
+
+      const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+      const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+      const program = createProgram(gl, vertexShader, fragmentShader);
+
+      const positionLocation = gl.getAttribLocation(program, "a_position");
+      const resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+      const panLocation = gl.getUniformLocation(program, "u_pan");
+      const colorLocation = gl.getUniformLocation(program, "u_color");
+
+      const positionBuffer = gl.createBuffer();
+
+      // ============================================================================
+      // State
+      // ============================================================================
+
+      let curves = [];
+      let activeCurveIndex = -1;
+      let selectedEndpoint = null;
+      let dragging = null;
+      let pan = { x: 0, y: 0 };
+      let isPanning = false;
+      let lastMouse = { x: 0, y: 0 };
+      let spacePressed = false;
+
+      const SEGMENTS_PER_CURVE = 50;
+
+      // ============================================================================
+      // Bézier Math
+      // ============================================================================
+
+      function evaluateBezier(seg, t) {
+        const mt = 1 - t;
+        const mt2 = mt * mt;
+        const mt3 = mt2 * mt;
+        const t2 = t * t;
+        const t3 = t2 * t;
+
+        return {
+          x: mt3 * seg.p0.x + 3 * mt2 * t * seg.p1.x + 3 * mt * t2 * seg.p2.x + t3 * seg.p3.x,
+          y: mt3 * seg.p0.y + 3 * mt2 * t * seg.p1.y + 3 * mt * t2 * seg.p2.y + t3 * seg.p3.y,
+        };
+      }
+
+      function tessellateSegment(seg, numPoints = SEGMENTS_PER_CURVE) {
+        const points = [];
+        for (let i = 0; i <= numPoints; i++) {
+          const t = i / numPoints;
+          points.push(evaluateBezier(seg, t));
+        }
+        return points;
+      }
+
+      // ============================================================================
+      // WebGL Drawing
+      // ============================================================================
+
+      function resizeCanvas() {
+        const container = canvas.parentElement;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = container.clientWidth * dpr;
+        canvas.height = container.clientHeight * dpr;
+        canvas.style.width = container.clientWidth + "px";
+        canvas.style.height = container.clientHeight + "px";
+        gl.viewport(0, 0, canvas.width, canvas.height);
+      }
+
+      function drawLines(points, color, lineWidth = 3) {
+        if (points.length < 2) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        const vertices = [];
+        for (const p of points) {
+          vertices.push(p.x * dpr, p.y * dpr);
+        }
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
+
+        gl.useProgram(program);
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+        gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+        gl.uniform2f(panLocation, pan.x * dpr, pan.y * dpr);
+        gl.uniform4f(colorLocation, color[0], color[1], color[2], color[3]);
+
+        gl.lineWidth(lineWidth);
+        gl.drawArrays(gl.LINE_STRIP, 0, points.length);
+      }
+
+      function drawPoints(points, color, size = 14) {
+        if (points.length === 0) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        const vertices = [];
+        for (const p of points) {
+          vertices.push(p.x * dpr, p.y * dpr);
+        }
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
+
+        gl.useProgram(program);
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+        gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+        gl.uniform2f(panLocation, pan.x * dpr, pan.y * dpr);
+        gl.uniform4f(colorLocation, color[0], color[1], color[2], color[3]);
+
+        gl.drawArrays(gl.POINTS, 0, points.length);
+      }
+
+      function render() {
+        resizeCanvas();
+
+        gl.clearColor(0.05, 0.07, 0.12, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        // Draw curves
+        const curveColor = [1.0, 0.2, 0.4, 1.0]; // #ff3366
+
+        for (const curve of curves) {
+          for (const seg of curve.segments) {
+            const points = tessellateSegment(seg);
+            drawLines(points, curveColor);
+          }
+        }
+
+        // Draw control handles
+        const handleColor = [0.54, 0.36, 0.96, 0.6];
+        for (const curve of curves) {
+          for (const seg of curve.segments) {
+            drawLines([seg.p0, seg.p1], handleColor);
+            drawLines([seg.p2, seg.p3], handleColor);
+          }
+        }
+
+        // Draw control points
+        const controlPointColor = [0.54, 0.36, 0.96, 1.0];
+        const anchorColor = [0.0, 0.85, 1.0, 1.0];
+        const selectedColor = [1.0, 0.58, 0.0, 1.0];
+
+        for (let ci = 0; ci < curves.length; ci++) {
+          const curve = curves[ci];
+          for (let si = 0; si < curve.segments.length; si++) {
+            const seg = curve.segments[si];
+            
+            // Control points
+            drawPoints([seg.p1, seg.p2], controlPointColor);
+            
+            // Anchor points
+            const isP0Selected = selectedEndpoint && 
+              selectedEndpoint.curveIndex === ci && 
+              selectedEndpoint.segmentIndex === si && 
+              selectedEndpoint.pointType === "p0";
+            const isP3Selected = selectedEndpoint && 
+              selectedEndpoint.curveIndex === ci && 
+              selectedEndpoint.segmentIndex === si && 
+              selectedEndpoint.pointType === "p3";
+              
+            drawPoints([seg.p0], isP0Selected ? selectedColor : anchorColor);
+            if (si === curve.segments.length - 1) {
+              drawPoints([seg.p3], isP3Selected ? selectedColor : anchorColor);
+            }
+          }
+        }
+
+        updateStats();
+        updateNavLinks();
+      }
+
+      // ============================================================================
+      // Continuity Enforcement
+      // ============================================================================
+
+      function enforceContinuity(curveIndex, junctionIndex, movedControlPointType) {
+        const curve = curves[curveIndex];
+        if (!curve || junctionIndex < 0 || junctionIndex >= curve.continuity.length) return;
+
+        const mode = curve.continuity[junctionIndex];
+        if (mode === "independent") return;
+
+        const seg1 = curve.segments[junctionIndex];
+        const seg2 = curve.segments[junctionIndex + 1];
+        const junction = seg1.p3;
+
+        if (movedControlPointType === "p2") {
+          const direction = subtractPoints(junction, seg1.p2);
+          if (mode === "c1") {
+            const len = distance(seg2.p1, junction);
+            const normalized = scalePoint(direction, 1 / distance(seg1.p2, junction));
+            seg2.p1 = addPoints(junction, scalePoint(normalized, len));
+          } else if (mode === "c2") {
+            seg2.p1 = addPoints(junction, direction);
+          }
+        } else if (movedControlPointType === "p1") {
+          const direction = subtractPoints(junction, seg2.p1);
+          if (mode === "c1") {
+            const len = distance(seg1.p2, junction);
+            const normalized = scalePoint(direction, 1 / distance(seg2.p1, junction));
+            seg1.p2 = addPoints(junction, scalePoint(normalized, len));
+          } else if (mode === "c2") {
+            seg1.p2 = addPoints(junction, direction);
+          }
+        }
+      }
+
+      // ============================================================================
+      // Hit Testing
+      // ============================================================================
+
+      function findPointAt(x, y, threshold = 10) {
+        for (let ci = curves.length - 1; ci >= 0; ci--) {
+          const curve = curves[ci];
+          for (let si = curve.segments.length - 1; si >= 0; si--) {
+            const seg = curve.segments[si];
+            for (const type of ["p0", "p1", "p2", "p3"]) {
+              if (type === "p0" && si > 0) continue;
+              const p = seg[type];
+              if (distance(p, { x, y }) <= threshold) {
+                return { curveIndex: ci, segmentIndex: si, pointType: type };
+              }
+            }
+          }
+        }
+        return null;
+      }
+
+      // ============================================================================
+      // Mouse Handlers
+      // ============================================================================
+
+      function getMousePos(e) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: e.clientX - rect.left - pan.x,
+          y: e.clientY - rect.top - pan.y,
+        };
+      }
+
+      canvas.addEventListener("mousedown", (e) => {
+        const pos = getMousePos(e);
+        lastMouse = { x: e.clientX, y: e.clientY };
+
+        if (spacePressed) {
+          isPanning = true;
+          return;
+        }
+
+        const hit = findPointAt(pos.x, pos.y);
+
+        if (e.shiftKey && !hit) {
+          const seg = {
+            p0: createPoint(pos.x, pos.y),
+            p1: createPoint(pos.x + 50, pos.y - 50),
+            p2: createPoint(pos.x + 100, pos.y - 50),
+            p3: createPoint(pos.x + 150, pos.y),
+          };
+          curves.push({ segments: [seg], continuity: [] });
+          activeCurveIndex = curves.length - 1;
+          selectedEndpoint = { curveIndex: activeCurveIndex, segmentIndex: 0, pointType: "p3" };
+          updateURL();
+          render();
+          return;
+        }
+
+        if (e.ctrlKey && hit && (hit.pointType === "p0" || hit.pointType === "p3")) {
+          const result = deleteNodeFromCurves(curves, activeCurveIndex, hit.curveIndex, hit.segmentIndex, hit.pointType);
+          curves = result.curves;
+          activeCurveIndex = result.activeCurveIndex;
+          selectedEndpoint = null;
+          updateURL();
+          render();
+          return;
+        }
+
+        if (e.ctrlKey && selectedEndpoint && !hit) {
+          const ci = selectedEndpoint.curveIndex;
+          const curve = curves[ci];
+          const mode = document.getElementById("continuity").value;
+
+          if (selectedEndpoint.pointType === "p3" && selectedEndpoint.segmentIndex === curve.segments.length - 1) {
+            const lastSeg = curve.segments[curve.segments.length - 1];
+            const dir = subtractPoints(lastSeg.p3, lastSeg.p2);
+            const newSeg = {
+              p0: { ...lastSeg.p3 },
+              p1: addPoints(lastSeg.p3, dir),
+              p2: { x: pos.x - 50, y: pos.y },
+              p3: createPoint(pos.x, pos.y),
+            };
+            curve.segments.push(newSeg);
+            curve.continuity.push(mode);
+            selectedEndpoint = { curveIndex: ci, segmentIndex: curve.segments.length - 1, pointType: "p3" };
+          } else if (selectedEndpoint.pointType === "p0" && selectedEndpoint.segmentIndex === 0) {
+            const firstSeg = curve.segments[0];
+            const dir = subtractPoints(firstSeg.p0, firstSeg.p1);
+            const newSeg = {
+              p0: createPoint(pos.x, pos.y),
+              p1: { x: pos.x + 50, y: pos.y },
+              p2: addPoints(firstSeg.p0, dir),
+              p3: { ...firstSeg.p0 },
+            };
+            curve.segments.unshift(newSeg);
+            curve.continuity.unshift(mode);
+            selectedEndpoint = { curveIndex: ci, segmentIndex: 0, pointType: "p0" };
+          }
+          updateURL();
+          render();
+          return;
+        }
+
+        if (hit) {
+          dragging = hit;
+          activeCurveIndex = hit.curveIndex;
+          if (hit.pointType === "p0" || hit.pointType === "p3") {
+            const isEndpoint =
+              (hit.pointType === "p0" && hit.segmentIndex === 0) ||
+              (hit.pointType === "p3" && hit.segmentIndex === curves[hit.curveIndex].segments.length - 1);
+            if (isEndpoint) {
+              selectedEndpoint = hit;
+            }
+          }
+          render();
+        }
+      });
+
+      canvas.addEventListener("mousemove", (e) => {
+        if (isPanning) {
+          pan.x += e.clientX - lastMouse.x;
+          pan.y += e.clientY - lastMouse.y;
+          lastMouse = { x: e.clientX, y: e.clientY };
+          render();
+          return;
+        }
+
+        if (!dragging) return;
+
+        const pos = getMousePos(e);
+        const curve = curves[dragging.curveIndex];
+        const seg = curve.segments[dragging.segmentIndex];
+        const oldPos = { ...seg[dragging.pointType] };
+        seg[dragging.pointType] = pos;
+
+        if (dragging.pointType === "p0" || dragging.pointType === "p3") {
+          const delta = subtractPoints(pos, oldPos);
+          
+          if (dragging.pointType === "p0") {
+            seg.p1 = addPoints(seg.p1, delta);
+            if (dragging.segmentIndex > 0) {
+              const prevSeg = curve.segments[dragging.segmentIndex - 1];
+              prevSeg.p3 = { ...pos };
+              prevSeg.p2 = addPoints(prevSeg.p2, delta);
+            }
+          } else {
+            seg.p2 = addPoints(seg.p2, delta);
+            if (dragging.segmentIndex < curve.segments.length - 1) {
+              const nextSeg = curve.segments[dragging.segmentIndex + 1];
+              nextSeg.p0 = { ...pos };
+              nextSeg.p1 = addPoints(nextSeg.p1, delta);
+            }
+          }
+        } else if (e.ctrlKey) {
+          if (dragging.pointType === "p2" && dragging.segmentIndex < curve.segments.length - 1) {
+            enforceContinuity(dragging.curveIndex, dragging.segmentIndex, "p2");
+          } else if (dragging.pointType === "p1" && dragging.segmentIndex > 0) {
+            enforceContinuity(dragging.curveIndex, dragging.segmentIndex - 1, "p1");
+          }
+        }
+
+        render();
+      });
+
+      canvas.addEventListener("mouseup", () => {
+        if (dragging) {
+          updateURL();
+        }
+        dragging = null;
+        isPanning = false;
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        dragging = null;
+        isPanning = false;
+      });
+
+      // ============================================================================
+      // Keyboard
+      // ============================================================================
+
+      document.addEventListener("keydown", (e) => {
+        if (e.code === "Space" && !e.repeat) {
+          spacePressed = true;
+          canvas.style.cursor = "grab";
+        }
+      });
+
+      document.addEventListener("keyup", (e) => {
+        if (e.code === "Space") {
+          spacePressed = false;
+          canvas.style.cursor = "crosshair";
+        }
+      });
+
+      // ============================================================================
+      // URL & UI
+      // ============================================================================
+
+      const updateURL = debounce(() => {
+        const hash = serializeCurves(curves);
+        window.history.replaceState(null, "", hash ? "#" + hash : window.location.pathname);
+        updateSegmentList();
+      }, 100);
+
+      function updateNavLinks() {
+        const hash = window.location.hash;
+        document.getElementById("navCanvas").href = "canvas.html" + hash;
+        document.getElementById("navSvg").href = "svg.html" + hash;
+        document.getElementById("navHtml").href = "html.html" + hash;
+      }
+
+      function updateStats() {
+        const totalSegments = curves.reduce((sum, c) => sum + c.segments.length, 0);
+        document.getElementById("stats").textContent = `Curves: ${curves.length} | Segments: ${totalSegments}`;
+      }
+
+      function updateSegmentList() {
+        const list = document.getElementById("segmentList");
+        if (curves.length === 0) {
+          list.innerHTML = '<div style="color: #666; font-size: 0.8rem">No curves yet. Shift+click to start!</div>';
+          return;
+        }
+        list.innerHTML = curves
+          .map(
+            (curve, i) => `
+          <div class="segment-item${i === activeCurveIndex ? " selected" : ""}">
+            <strong>Curve ${i + 1}</strong>: ${curve.segments.length} segment(s)
+          </div>
+        `
+          )
+          .join("");
+      }
+
+      // ============================================================================
+      // Buttons
+      // ============================================================================
+
+      document.getElementById("clearBtn").addEventListener("click", () => {
+        curves = [];
+        activeCurveIndex = -1;
+        selectedEndpoint = null;
+        updateURL();
+        render();
+      });
+
+      document.getElementById("exportBtn").addEventListener("click", () => {
+        const data = JSON.stringify(curves, null, 2);
+        const blob = new Blob([data], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "bezier-curves.json";
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+
+      document.getElementById("copyUrlBtn").addEventListener("click", () => {
+        navigator.clipboard.writeText(window.location.href);
+      });
+
+      // ============================================================================
+      // Init
+      // ============================================================================
+
+      function init() {
+        const hash = window.location.hash.slice(1);
+        if (hash) {
+          curves = parseCurvesFromURL(hash);
+          if (curves.length > 0) activeCurveIndex = 0;
+        }
+        resizeCanvas();
+        render();
+      }
+
+      window.addEventListener("resize", render);
+      window.addEventListener("hashchange", () => {
+        curves = parseCurvesFromURL(window.location.hash.slice(1));
+        if (curves.length > 0) activeCurveIndex = 0;
+        render();
+      });
+
+      init();
+    </script>
+  </body>
+</html>
